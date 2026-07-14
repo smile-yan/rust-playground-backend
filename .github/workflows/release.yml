@@ -230,20 +230,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "=== Copying files via ssh + cat (avoiding scp/sftp) ==="
-          for file in dist/rust-playground-linux-x64 dist/rust-playground-linux-x64.sha256; do
-            base=$(basename "$file")
-            echo "Uploading ${base}..."
-            ssh -o StrictHostKeyChecking=accept-new \
-              -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
-              "cat > ${DEPLOY_PATH}/${base}" < "$file"
-            echo "Uploaded ${base}"
-          done
+          echo "=== Packaging and uploading binary ==="
+          cd dist
+          tar -czf deploy.tar.gz rust-playground-linux-x64 rust-playground-linux-x64.sha256
+          ls -lh deploy.tar.gz
+          cd ..
 
-          echo "=== Verifying remote files ==="
+          echo "=== Uploading deploy.tar.gz via ssh + cat ==="
           ssh -o StrictHostKeyChecking=accept-new \
             -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
-            "ls -lh ${DEPLOY_PATH}/rust-playground-linux-x64 ${DEPLOY_PATH}/rust-playground-linux-x64.sha256"
+            "cat > ${DEPLOY_PATH}/deploy.tar.gz" < "dist/deploy.tar.gz"
+
+          echo "=== Verifying remote archive ==="
+          ssh -o StrictHostKeyChecking=accept-new \
+            -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
+            "ls -lh ${DEPLOY_PATH}/deploy.tar.gz"
 
       - name: Restart service on cloud server
         shell: bash
@@ -256,6 +257,10 @@ jobs:
           APP_DIR="$DEPLOY_PATH"
           cd "\${APP_DIR}"
 
+          # Extract deployment archive
+          echo "=== Extracting deployment archive ==="
+          tar -xzf deploy.tar.gz
+
           # Verify checksum before renaming
           if [ -f "rust-playground-linux-x64.sha256" ]; then
             sha256sum -c rust-playground-linux-x64.sha256
@@ -264,6 +269,9 @@ jobs:
           # Rename binary to standard name
           mv rust-playground-linux-x64 rust-playground
           chmod +x rust-playground
+
+          # Clean up archive
+          rm -f deploy.tar.gz rust-playground-linux-x64.sha256
 
           # Ensure Rust toolchain is available (required to compile user code)
           if ! command -v rustc &>/dev/null; then
