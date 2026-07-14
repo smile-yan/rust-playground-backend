@@ -145,14 +145,20 @@ jobs:
     name: Deploy to Cloud Server
     needs: build-linux-x64
     runs-on: ubuntu-latest
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/rust-playground' }}
     steps:
       - name: Validate SSH secrets
         shell: bash
         run: |
           missing=()
-          [[ -z "${{ secrets.SSH_HOST }}" ]] && missing+=("SSH_HOST")
-          [[ -z "${{ secrets.SSH_USER }}" ]] && missing+=("SSH_USER")
-          [[ -z "${{ secrets.SSH_PRIVATE_KEY }}" ]] && missing+=("SSH_PRIVATE_KEY")
+          [[ -z "$SSH_HOST" ]] && missing+=("SSH_HOST")
+          [[ -z "$SSH_USER" ]] && missing+=("SSH_USER")
+          [[ -z "$SSH_PRIVATE_KEY" ]] && missing+=("SSH_PRIVATE_KEY")
           if [[ ${#missing[@]} -gt 0 ]]; then
             echo "::error::Missing required secrets: ${missing[*]}"
             exit 1
@@ -164,57 +170,82 @@ jobs:
           name: rust-playground-linux-x64
           path: dist
 
+      - name: Setup SSH key and test connectivity
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          echo "=== SSH config ==="
+          echo "Host: $SSH_HOST"
+          echo "Port: $SSH_PORT"
+          echo "User: $SSH_USER"
+          echo "Deploy path: $DEPLOY_PATH"
+          echo "Key file size: $(stat -c%s ~/.ssh/deploy_key 2>/dev/null || stat -f%z ~/.ssh/deploy_key 2>/dev/null) bytes"
+
+          echo "=== Scanning host key ==="
+          ssh-keyscan -H -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts 2>&1 || true
+
+          echo "=== Testing SSH connection (verbose) ==="
+          ssh -v -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
+            -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
+            "echo 'SSH connection OK'" || {
+              echo "::error::SSH connection test failed. Please verify SSH_HOST, SSH_PORT, SSH_USER, and SSH_PRIVATE_KEY."
+              exit 1
+            }
+
       - name: Copy binary to cloud server
-        uses: appleboy/scp-action@v1.0.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || '22' }}
-          source: "dist/rust-playground-linux-x64,dist/rust-playground-linux-x64.sha256"
-          target: "${{ secrets.DEPLOY_PATH || '/opt/rust-playground' }}"
-          strip_components: 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "=== Copying files via scp ==="
+          scp -v -o StrictHostKeyChecking=accept-new \
+            -P "$SSH_PORT" -i ~/.ssh/deploy_key \
+            dist/rust-playground-linux-x64 dist/rust-playground-linux-x64.sha256 \
+            "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/"
 
       - name: Restart service on cloud server
-        uses: appleboy/ssh-action@v1.2.5
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || '22' }}
-          script: |
-            set -euo pipefail
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=accept-new \
+            -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" << EOF
+          set -euo pipefail
 
-            APP_DIR="${{ secrets.DEPLOY_PATH || '/opt/rust-playground' }}"
-            cd "${APP_DIR}"
+          APP_DIR="$DEPLOY_PATH"
+          cd "\${APP_DIR}"
 
-            # Verify checksum before renaming
-            if [ -f "rust-playground-linux-x64.sha256" ]; then
-              sha256sum -c rust-playground-linux-x64.sha256
-            fi
+          # Verify checksum before renaming
+          if [ -f "rust-playground-linux-x64.sha256" ]; then
+            sha256sum -c rust-playground-linux-x64.sha256
+          fi
 
-            # Rename binary to standard name
-            mv rust-playground-linux-x64 rust-playground
-            chmod +x rust-playground
+          # Rename binary to standard name
+          mv rust-playground-linux-x64 rust-playground
+          chmod +x rust-playground
 
-            # Ensure Rust toolchain is available (required to compile user code)
-            if ! command -v rustc &>/dev/null; then
-              echo "Installing Rust toolchain..."
-              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
-              source "$HOME/.cargo/env"
-            fi
-            rustup target add wasm32-wasip1 2>/dev/null || true
+          # Ensure Rust toolchain is available (required to compile user code)
+          if ! command -v rustc &>/dev/null; then
+            echo "Installing Rust toolchain..."
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+            source "\$HOME/.cargo/env"
+          fi
+          rustup target add wasm32-wasip1 2>/dev/null || true
 
-            # Restart the service if it exists
-            if systemctl list-unit-files | grep -q "^rust-playground.service"; then
-              sudo systemctl daemon-reload
-              sudo systemctl restart rust-playground
-              sudo systemctl is-active --quiet rust-playground && echo "Service is running"
-            else
-              echo "Service rust-playground.service not found; binary deployed to ${APP_DIR}/rust-playground"
-            fi
+          # Restart the service if it exists
+          if systemctl list-unit-files | grep -q "^rust-playground.service"; then
+            sudo systemctl daemon-reload
+            sudo systemctl restart rust-playground
+            sudo systemctl is-active --quiet rust-playground && echo "Service is running"
+          else
+            echo "Service rust-playground.service not found; binary deployed to \${APP_DIR}/rust-playground"
+          fi
 
-            echo "Deployment completed: ${GITHUB_REF_NAME}"
+          echo "Deployment completed: \${GITHUB_REF_NAME}"
+          EOF
 
   release:
     name: Create GitHub Release
