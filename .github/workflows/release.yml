@@ -292,7 +292,7 @@ jobs:
             echo "Service rust-playground.service not found; binary deployed to \${APP_DIR}/rust-playground"
           fi
 
-          echo "Deployment completed: \${GITHUB_REF_NAME}"
+          echo "Deployment completed"
           EOF
 
   release:
