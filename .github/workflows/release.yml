@@ -12,29 +12,29 @@ env:
 jobs:
   build:
     name: Build (${{ matrix.arch }})
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
             arch: linux-x64
             cross: false
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
+          - runner: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
             arch: linux-arm64
             cross: true
-          - target: x86_64-apple-darwin
-            os: macos-13
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
             arch: macos-x64
             cross: false
-          - target: aarch64-apple-darwin
-            os: macos-latest
+          - runner: macos-latest
+            target: aarch64-apple-darwin
             arch: macos-arm64
             cross: false
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
+          - runner: windows-latest
+            target: x86_64-pc-windows-msvc
             arch: windows-x64
             cross: false
 
@@ -81,7 +81,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+          if [[ "${{ matrix.target }}" == *"windows"* ]]; then
             BINARY="rust-playground-${{ matrix.arch }}.exe"
             cp "target/${{ matrix.target }}/release/rust-playground.exe" "dist/${BINARY}"
           else
