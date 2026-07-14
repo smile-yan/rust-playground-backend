@@ -10,17 +10,55 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  build:
+  build-linux-x64:
+    name: Build linux-x64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Cache cargo registry
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-x86_64-unknown-linux-gnu-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-x86_64-unknown-linux-gnu-cargo-
+
+      - name: Build release binary
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+
+      - name: Package binary
+        shell: bash
+        run: |
+          mkdir -p dist
+          BINARY="rust-playground-linux-x64"
+          cp "target/x86_64-unknown-linux-gnu/release/rust-playground" "dist/${BINARY}"
+          cd dist
+          sha256sum "${BINARY}" > "${BINARY}.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: rust-playground-linux-x64
+          path: dist/*
+          if-no-files-found: error
+
+  build-cross:
     name: Build (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            arch: linux-x64
-            cross: false
           - runner: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             arch: linux-arm64
@@ -103,9 +141,84 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  deploy:
+    name: Deploy to Cloud Server
+    needs: build-linux-x64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate SSH secrets
+        shell: bash
+        run: |
+          missing=()
+          [[ -z "${{ secrets.SSH_HOST }}" ]] && missing+=("SSH_HOST")
+          [[ -z "${{ secrets.SSH_USER }}" ]] && missing+=("SSH_USER")
+          [[ -z "${{ secrets.SSH_PRIVATE_KEY }}" ]] && missing+=("SSH_PRIVATE_KEY")
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing required secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Download linux-x64 artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: rust-playground-linux-x64
+          path: dist
+
+      - name: Copy binary to cloud server
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          source: "dist/rust-playground-linux-x64,dist/rust-playground-linux-x64.sha256"
+          target: "${{ secrets.DEPLOY_PATH || '/opt/rust-playground' }}"
+          strip_components: 1
+
+      - name: Restart service on cloud server
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          script: |
+            set -euo pipefail
+
+            APP_DIR="${{ secrets.DEPLOY_PATH || '/opt/rust-playground' }}"
+            cd "${APP_DIR}"
+
+            # Verify checksum before renaming
+            if [ -f "rust-playground-linux-x64.sha256" ]; then
+              sha256sum -c rust-playground-linux-x64.sha256
+            fi
+
+            # Rename binary to standard name
+            mv rust-playground-linux-x64 rust-playground
+            chmod +x rust-playground
+
+            # Ensure Rust toolchain is available (required to compile user code)
+            if ! command -v rustc &>/dev/null; then
+              echo "Installing Rust toolchain..."
+              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+              source "$HOME/.cargo/env"
+            fi
+            rustup target add wasm32-wasip1 2>/dev/null || true
+
+            # Restart the service if it exists
+            if systemctl list-unit-files | grep -q "^rust-playground.service"; then
+              sudo systemctl daemon-reload
+              sudo systemctl restart rust-playground
+              sudo systemctl is-active --quiet rust-playground && echo "Service is running"
+            else
+              echo "Service rust-playground.service not found; binary deployed to ${APP_DIR}/rust-playground"
+            fi
+
+            echo "Deployment completed: ${GITHUB_REF_NAME}"
+
   release:
     name: Create GitHub Release
-    needs: build
+    needs: [build-linux-x64, build-cross]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -146,73 +259,3 @@ jobs:
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  deploy:
-    name: Deploy to Cloud Server
-    needs: release
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js (latest)
-        uses: actions/setup-node@v7
-        with:
-          node-version: 'latest'
-
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.2.5
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || '22' }}
-          script_stop: true
-          script: |
-            set -euo pipefail
-
-            APP_DIR="${{ secrets.DEPLOY_PATH || '/opt/rust-playground' }}"
-            TARGET_ARCH="${{ secrets.TARGET_ARCH || 'linux-x64' }}"
-            VERSION="${GITHUB_REF_NAME}"
-            REPO="${{ github.repository }}"
-            BINARY_NAME="rust-playground-${TARGET_ARCH}"
-            RELEASE_URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY_NAME}"
-
-            echo "Deploying ${VERSION} (${TARGET_ARCH}) to ${APP_DIR}"
-            mkdir -p "${APP_DIR}"
-            cd "${APP_DIR}"
-
-            # Download the latest binary for the server architecture
-            curl -fsSL -o rust-playground "${RELEASE_URL}"
-            chmod +x rust-playground
-
-            # Verify checksum if available
-            curl -fsSL -o "${BINARY_NAME}.sha256" "${RELEASE_URL}.sha256" || true
-            if [ -f "${BINARY_NAME}.sha256" ]; then
-              sha256sum -c "${BINARY_NAME}.sha256"
-            fi
-
-            # Ensure Rust toolchain is available (required to compile user code)
-            if ! command -v rustc &>/dev/null; then
-              echo "Installing Rust toolchain..."
-              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
-              source "$HOME/.cargo/env"
-            fi
-            rustup target add wasm32-wasip1 2>/dev/null || true
-
-            # Create systemd service if it doesn't exist
-            SERVICE_FILE="/etc/systemd/system/rust-playground.service"
-            if [ ! -f "${SERVICE_FILE}" ]; then
-              echo "Please create systemd service manually or use a custom deploy script."
-            fi
-
-            # Restart the service if it exists
-            if systemctl list-unit-files | grep -q "^rust-playground.service"; then
-              sudo systemctl daemon-reload
-              sudo systemctl restart rust-playground
-              sudo systemctl is-active --quiet rust-playground && echo "Service is running"
-            else
-              echo "Service rust-playground.service not found; binary deployed to ${APP_DIR}/rust-playground"
-            fi
-
-            echo "Deployment completed: ${VERSION}"
