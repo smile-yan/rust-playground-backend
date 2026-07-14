@@ -230,11 +230,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "=== Copying files via scp ==="
-          scp -v -o StrictHostKeyChecking=accept-new \
-            -P "$SSH_PORT" -i ~/.ssh/deploy_key \
-            dist/rust-playground-linux-x64 dist/rust-playground-linux-x64.sha256 \
-            "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/"
+          echo "=== Copying files via ssh + cat (avoiding scp/sftp) ==="
+          for file in dist/rust-playground-linux-x64 dist/rust-playground-linux-x64.sha256; do
+            base=$(basename "$file")
+            echo "Uploading ${base}..."
+            ssh -o StrictHostKeyChecking=accept-new \
+              -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
+              "cat > \${DEPLOY_PATH}/${base}" < "$file"
+            echo "Uploaded ${base}"
+          done
+
+          echo "=== Verifying remote files ==="
+          ssh -o StrictHostKeyChecking=accept-new \
+            -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
+            "ls -lh \${DEPLOY_PATH}/rust-playground-linux-x64 \${DEPLOY_PATH}/rust-playground-linux-x64.sha256"
 
       - name: Restart service on cloud server
         shell: bash
