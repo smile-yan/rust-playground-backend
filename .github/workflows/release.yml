@@ -189,13 +189,32 @@ jobs:
           echo "=== Scanning host key ==="
           ssh-keyscan -H -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts 2>&1 || true
 
-          echo "=== Testing SSH connection (verbose) ==="
-          ssh -v -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
-            -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
-            "echo 'SSH connection OK'" || {
-              echo "::error::SSH connection test failed. Please verify SSH_HOST, SSH_PORT, SSH_USER, and SSH_PRIVATE_KEY."
-              exit 1
-            }
+          echo "=== Checking TCP reachability ==="
+          if command -v nc >/dev/null 2>&1; then
+            nc -vz -w 10 "$SSH_HOST" "$SSH_PORT" || true
+          else
+            timeout 10 bash -c "</dev/tcp/${SSH_HOST}/${SSH_PORT}" && echo "TCP port is reachable" || echo "TCP port is not reachable"
+          fi
+
+          echo "=== Testing SSH connection (verbose, with retries) ==="
+          max_attempts=3
+          for attempt in $(seq 1 $max_attempts); do
+            echo "Attempt $attempt/$max_attempts..."
+            if ssh -v -o ConnectTimeout=15 -o StrictHostKeyChecking=accept-new \
+                -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
+                "echo 'SSH connection OK'"; then
+              echo "SSH connection succeeded on attempt $attempt"
+              exit 0
+            fi
+            echo "SSH connection attempt $attempt failed"
+            if [[ $attempt -lt $max_attempts ]]; then
+              echo "Waiting 15 seconds before retry..."
+              sleep 15
+            fi
+          done
+
+          echo "::error::SSH connection test failed after $max_attempts attempts. Please verify SSH_HOST, SSH_PORT, SSH_USER, and SSH_PRIVATE_KEY, and ensure the server is reachable from GitHub Actions runners."
+          exit 1
 
       - name: Copy binary to cloud server
         shell: bash
