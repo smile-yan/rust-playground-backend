@@ -1,0 +1,213 @@
+name: Release and Deploy
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build:
+    name: Build (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            arch: linux-x64
+            cross: false
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            arch: linux-arm64
+            cross: true
+          - target: x86_64-apple-darwin
+            os: macos-13
+            arch: macos-x64
+            cross: false
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            arch: macos-arm64
+            cross: false
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            arch: windows-x64
+            cross: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install zig for cross compilation
+        if: matrix.cross
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.13.0
+
+      - name: Install cargo-zigbuild
+        if: matrix.cross
+        run: cargo install cargo-zigbuild
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-cargo-
+
+      - name: Build release binary
+        shell: bash
+        run: |
+          if [[ "${{ matrix.cross }}" == "true" ]]; then
+            cargo zigbuild --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
+
+      - name: Package binary
+        shell: bash
+        run: |
+          mkdir -p dist
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            BINARY="rust-playground-${{ matrix.arch }}.exe"
+            cp "target/${{ matrix.target }}/release/rust-playground.exe" "dist/${BINARY}"
+          else
+            BINARY="rust-playground-${{ matrix.arch }}"
+            cp "target/${{ matrix.target }}/release/rust-playground" "dist/${BINARY}"
+          fi
+          cd dist
+          sha256sum "${BINARY}" > "${BINARY}.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-playground-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (latest)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'latest'
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: rust-playground-*
+          merge-multiple: true
+
+      - name: Verify artifacts with Node.js
+        run: |
+          node -e "
+            const fs = require('fs');
+            const path = require('path');
+            const files = fs.readdirSync('dist');
+            console.log('Artifacts to release:');
+            files.forEach(f => {
+              const stat = fs.statSync(path.join('dist', f));
+              console.log(' - ' + f + ' (' + stat.size + ' bytes)');
+            });
+          "
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy:
+    name: Deploy to Cloud Server
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (latest)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'latest'
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            APP_DIR="${{ secrets.DEPLOY_PATH || '/opt/rust-playground' }}"
+            TARGET_ARCH="${{ secrets.TARGET_ARCH || 'linux-x64' }}"
+            VERSION="${GITHUB_REF_NAME}"
+            REPO="${{ github.repository }}"
+            BINARY_NAME="rust-playground-${TARGET_ARCH}"
+            RELEASE_URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY_NAME}"
+
+            echo "Deploying ${VERSION} (${TARGET_ARCH}) to ${APP_DIR}"
+            mkdir -p "${APP_DIR}"
+            cd "${APP_DIR}"
+
+            # Download the latest binary for the server architecture
+            curl -fsSL -o rust-playground "${RELEASE_URL}"
+            chmod +x rust-playground
+
+            # Verify checksum if available
+            curl -fsSL -o "${BINARY_NAME}.sha256" "${RELEASE_URL}.sha256" || true
+            if [ -f "${BINARY_NAME}.sha256" ]; then
+              sha256sum -c "${BINARY_NAME}.sha256"
+            fi
+
+            # Ensure Rust toolchain is available (required to compile user code)
+            if ! command -v rustc &>/dev/null; then
+              echo "Installing Rust toolchain..."
+              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+              source "$HOME/.cargo/env"
+            fi
+            rustup target add wasm32-wasip1 2>/dev/null || true
+
+            # Create systemd service if it doesn't exist
+            SERVICE_FILE="/etc/systemd/system/rust-playground.service"
+            if [ ! -f "${SERVICE_FILE}" ]; then
+              echo "Please create systemd service manually or use a custom deploy script."
+            fi
+
+            # Restart the service if it exists
+            if systemctl list-unit-files | grep -q "^rust-playground.service"; then
+              sudo systemctl daemon-reload
+              sudo systemctl restart rust-playground
+              sudo systemctl is-active --quiet rust-playground && echo "Service is running"
+            else
+              echo "Service rust-playground.service not found; binary deployed to ${APP_DIR}/rust-playground"
+            fi
+
+            echo "Deployment completed: ${VERSION}"
