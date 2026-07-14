@@ -236,14 +236,14 @@ jobs:
             echo "Uploading ${base}..."
             ssh -o StrictHostKeyChecking=accept-new \
               -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
-              "cat > \${DEPLOY_PATH}/${base}" < "$file"
+              "cat > ${DEPLOY_PATH}/${base}" < "$file"
             echo "Uploaded ${base}"
           done
 
           echo "=== Verifying remote files ==="
           ssh -o StrictHostKeyChecking=accept-new \
             -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
-            "ls -lh \${DEPLOY_PATH}/rust-playground-linux-x64 \${DEPLOY_PATH}/rust-playground-linux-x64.sha256"
+            "ls -lh ${DEPLOY_PATH}/rust-playground-linux-x64 ${DEPLOY_PATH}/rust-playground-linux-x64.sha256"
 
       - name: Restart service on cloud server
         shell: bash
