@@ -299,7 +299,7 @@ jobs:
             sleep 1
             # Start in background
             nohup "\${APP_DIR}/rust-playground" > "\${APP_DIR}/rust-playground.log" 2>&1 &
-            echo "Started rust-playground (PID: $!)"
+            echo "Started rust-playground (PID: \$!)"
           fi
 
           echo "Deployment completed"
