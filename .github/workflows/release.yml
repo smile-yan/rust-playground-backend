@@ -320,8 +320,9 @@ jobs:
             # Stop any existing instance
             pkill -f "rust-playground" || true
             sleep 1
-            # Start in background
-            nohup "\${APP_DIR}/rust-playground" > "\${APP_DIR}/rust-playground.log" 2>&1 &
+            # Start in background, fully detached from the SSH session
+            nohup "\${APP_DIR}/rust-playground" > "\${APP_DIR}/rust-playground.log" 2>&1 < /dev/null &
+            disown || true
             echo "Started rust-playground (PID: \$!)"
           fi
 
