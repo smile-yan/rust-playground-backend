@@ -240,10 +240,15 @@ jobs:
           ls -lh deploy.tar.gz
           cd ..
 
-          echo "=== Uploading deploy.tar.gz via ssh + cat ==="
+          echo "=== Ensuring deploy directory exists ==="
           ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 -o ServerAliveCountMax=3 \
             -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
-            "mkdir -p ${DEPLOY_PATH} && cat > ${DEPLOY_PATH}/deploy.tar.gz" < "dist/deploy.tar.gz"
+            "mkdir -p ${DEPLOY_PATH}"
+
+          echo "=== Uploading deploy.tar.gz via scp -O ==="
+          scp -O -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 \
+            -P "$SSH_PORT" -i ~/.ssh/deploy_key \
+            dist/deploy.tar.gz "$SSH_USER@$SSH_HOST:${DEPLOY_PATH}/"
 
           echo "=== Verifying remote archive ==="
           ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 -o ServerAliveCountMax=3 \
