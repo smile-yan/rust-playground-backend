@@ -296,7 +296,7 @@ jobs:
         run: |
           set -euo pipefail
           COMMON_SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 -o ServerAliveCountMax=3 -o LogLevel=ERROR"
-          ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SERVER_IP" << EOF
+          timeout 120 ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SERVER_IP" << EOF
           set -euo pipefail
 
           APP_DIR="$DEPLOY_PATH"
@@ -328,16 +328,15 @@ jobs:
 
           # Stop any existing instance
           pkill -f "rust-playground" || true
-          sleep 1
+          sleep 2
 
           # Ensure rustup environment is available for the binary
           if [ -f "\$HOME/.cargo/env" ]; then
             source "\$HOME/.cargo/env"
           fi
 
-          # Start in background, fully detached from the SSH session
-          nohup "\${APP_DIR}/rust-playground" > "\${APP_DIR}/rust-playground.log" 2>&1 < /dev/null &
-          disown || true
+          # Start in a new session, fully detached from the SSH session
+          setsid "\${APP_DIR}/rust-playground" > "\${APP_DIR}/rust-playground.log" 2>&1 < /dev/null &
           echo "Started rust-playground (PID: \$!)"
 
           # Show process status and recent log for diagnostics
