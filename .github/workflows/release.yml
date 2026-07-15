@@ -241,10 +241,24 @@ jobs:
           cd ..
 
           echo "=== Ensuring deploy directory exists ==="
-          ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 -o ServerAliveCountMax=3 \
-            -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
-            "mkdir -p ${DEPLOY_PATH}"
-
+          if ! ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 -o ServerAliveCountMax=3 \
+              -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
+              "test -d ${DEPLOY_PATH}"; then
+            echo "Directory ${DEPLOY_PATH} does not exist, attempting to create it..."
+            if ! ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 -o ServerAliveCountMax=3 \
+                -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
+                "mkdir -p ${DEPLOY_PATH}" 2>&1; then
+              echo "mkdir failed, trying with sudo..."
+              if ! ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 -o ServerAliveCountMax=3 \
+                  -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
+                  "sudo mkdir -p ${DEPLOY_PATH} && sudo chown \$(id -u):\$(id -g) ${DEPLOY_PATH}" 2>&1; then
+                echo "::error::Cannot create ${DEPLOY_PATH}. Please ensure the directory exists and the SSH user has write permission, or change DEPLOY_PATH to a directory under the user's home."
+                exit 1
+              fi
+            fi
+          else
+            echo "Directory ${DEPLOY_PATH} already exists"
+          fi
           echo "=== Uploading deploy.tar.gz via scp -O ==="
           scp -O -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 \
             -P "$SSH_PORT" -i ~/.ssh/deploy_key \
