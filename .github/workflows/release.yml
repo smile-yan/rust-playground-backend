@@ -283,17 +283,48 @@ jobs:
           rustup target add wasm32-wasip1 || true
           echo "Rust target check complete"
 
-          # Restart the service if it exists
+          # Restart the service if it exists, otherwise start the binary directly
           if systemctl list-unit-files | grep -q "^rust-playground.service"; then
             sudo systemctl daemon-reload
             sudo systemctl restart rust-playground
             sudo systemctl is-active --quiet rust-playground && echo "Service is running"
           else
-            echo "Service rust-playground.service not found; binary deployed to \${APP_DIR}/rust-playground"
+            echo "Service rust-playground.service not found; starting binary directly..."
+            # Ensure rustup environment is available for the binary
+            if [ -f "\$HOME/.cargo/env" ]; then
+              source "\$HOME/.cargo/env"
+            fi
+            # Stop any existing instance
+            pkill -f "rust-playground" || true
+            sleep 1
+            # Start in background
+            nohup "\${APP_DIR}/rust-playground" > "\${APP_DIR}/rust-playground.log" 2>&1 &
+            echo "Started rust-playground (PID: $!)"
           fi
 
           echo "Deployment completed"
           EOF
+
+      - name: Verify service is reachable
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="http://$SSH_HOST:9001/ping"
+          max_attempts=3
+          for attempt in $(seq 1 $max_attempts); do
+            echo "Health check attempt $attempt/$max_attempts: $url"
+            if curl -s -m 15 "$url" | grep -q "pong"; then
+              echo "Service is reachable"
+              exit 0
+            fi
+            echo "Service not reachable yet"
+            if [[ $attempt -lt $max_attempts ]]; then
+              echo "Waiting 20 seconds before next attempt..."
+              sleep 20
+            fi
+          done
+          echo "::error::Service did not become reachable after $max_attempts attempts"
+          exit 1
 
   release:
     name: Create GitHub Release

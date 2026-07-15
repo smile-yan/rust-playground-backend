@@ -1,4 +1,4 @@
-use axum::{routing::post, Router};
+use axum::{routing::{get, post}, Router};
 use std::net::SocketAddr;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
@@ -15,6 +15,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::subscriber::set_global_default(subscriber)?;
 
     let app = Router::new()
+        .route("/ping", get(|| async { "pong" }))
         .route("/evaluate.json", post(api::evaluate))
         .route("/api/run", post(api::evaluate))
         .layer(tower_http::cors::CorsLayer::permissive());
