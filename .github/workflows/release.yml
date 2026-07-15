@@ -259,8 +259,8 @@ jobs:
           else
             echo "Directory ${DEPLOY_PATH} already exists"
           fi
-          echo "=== Uploading deploy.tar.gz via scp -O ==="
-          scp -O -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 \
+          echo "=== Uploading deploy.tar.gz via scp ==="
+          scp -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 \
             -P "$SSH_PORT" -i ~/.ssh/deploy_key \
             dist/deploy.tar.gz "$SSH_USER@$SSH_HOST:${DEPLOY_PATH}/deploy.tar.gz"
 
