@@ -230,59 +230,48 @@ jobs:
 
           exit 1
 
+      - name: Clean up known_hosts
+        run: |
+          ssh-keygen -f ~/.ssh/known_hosts -R "$SSH_HOST" 2>/dev/null || true
+          ssh-keygen -f ~/.ssh/known_hosts -R "[$SSH_HOST]:$SSH_PORT" 2>/dev/null || true
+          rm -f ~/.ssh/known_hosts2
+        continue-on-error: true
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+
       - name: Copy binary to cloud server
         shell: bash
         run: |
           set -euo pipefail
-          echo "=== Packaging and uploading binary ==="
-          cd dist
-          tar -czf deploy.tar.gz rust-playground-linux-x64 rust-playground-linux-x64.sha256
-          ls -lh deploy.tar.gz
-          cd ..
+          COMMON_SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 -o ServerAliveCountMax=3 -o LogLevel=ERROR"
 
           echo "=== Ensuring deploy directory exists ==="
-          if ! ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 -o ServerAliveCountMax=3 \
-              -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
-              "test -d ${DEPLOY_PATH}"; then
-            echo "Directory ${DEPLOY_PATH} does not exist, attempting to create it..."
-            if ! ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 -o ServerAliveCountMax=3 \
-                -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
-                "mkdir -p ${DEPLOY_PATH}" 2>&1; then
+          ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
+            "mkdir -p ${DEPLOY_PATH}" 2>&1 || {
               echo "mkdir failed, trying with sudo..."
-              if ! ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 -o ServerAliveCountMax=3 \
-                  -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
-                  "sudo mkdir -p ${DEPLOY_PATH} && sudo chown \$(id -u):\$(id -g) ${DEPLOY_PATH}" 2>&1; then
-                echo "::error::Cannot create ${DEPLOY_PATH}. Please ensure the directory exists and the SSH user has write permission, or change DEPLOY_PATH to a directory under the user's home."
-                exit 1
-              fi
-            fi
-          else
-            echo "Directory ${DEPLOY_PATH} already exists"
-          fi
-          echo "=== Uploading deploy.tar.gz via scp ==="
-          scp -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 \
-            -P "$SSH_PORT" -i ~/.ssh/deploy_key \
-            dist/deploy.tar.gz "$SSH_USER@$SSH_HOST:${DEPLOY_PATH}/deploy.tar.gz"
+              ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
+                "sudo mkdir -p ${DEPLOY_PATH} && sudo chown \$(id -u):\$(id -g) ${DEPLOY_PATH}" 2>&1 || {
+                  echo "::error::Cannot create ${DEPLOY_PATH}. Please ensure the directory exists and the SSH user has write permission, or change DEPLOY_PATH to a directory under the user's home."
+                  exit 1
+                }
+            }
 
-          echo "=== Verifying remote archive ==="
-          ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 -o ServerAliveCountMax=3 \
-            -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
-            "ls -lh ${DEPLOY_PATH}/deploy.tar.gz"
+          echo "=== Uploading and extracting binary via tar over SSH ==="
+          tar czf - -C dist rust-playground-linux-x64 rust-playground-linux-x64.sha256 | \
+            ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
+              "tar xzf - -C ${DEPLOY_PATH} && ls -lh ${DEPLOY_PATH}"
 
       - name: Restart service on cloud server
         shell: bash
         run: |
           set -euo pipefail
-          ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 -o ServerAliveCountMax=3 \
-            -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" << EOF
+          COMMON_SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 -o ServerAliveCountMax=3 -o LogLevel=ERROR"
+          ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" << EOF
           set -euo pipefail
 
           APP_DIR="$DEPLOY_PATH"
           cd "\${APP_DIR}"
-
-          # Extract deployment archive
-          echo "=== Extracting deployment archive ==="
-          tar -xzf deploy.tar.gz
 
           # Verify checksum before renaming
           if [ -f "rust-playground-linux-x64.sha256" ]; then
@@ -293,8 +282,8 @@ jobs:
           mv rust-playground-linux-x64 rust-playground
           chmod +x rust-playground
 
-          # Clean up archive
-          rm -f deploy.tar.gz rust-playground-linux-x64.sha256
+          # Clean up checksum file
+          rm -f rust-playground-linux-x64.sha256
 
           # Ensure Rust toolchain is available (required to compile user code)
           if ! command -v rustc &>/dev/null; then
