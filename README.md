@@ -6,7 +6,9 @@ sandbox.
 
 ## Features
 
-- Axum-based HTTP API at `POST /api/run`
+- Axum-based HTTP API at `POST /evaluate.json` (also supports legacy `POST /api/run`)
+- Listens on `0.0.0.0:9001` by default
+- Compatible with the official Rust Playground frontend request format
 - `rustc` compiles user code to `wasm32-wasip1`
 - wasmtime sandbox with:
   - 256 MB memory limit (StoreLimits + `trap_on_grow_failure`)
@@ -44,13 +46,32 @@ rustup target add wasm32-wasip1
 cargo run
 ```
 
-The server starts on `http://127.0.0.1:3000`.
+The server starts on `http://0.0.0.0:9001`.
 
 ## API
 
-### `POST /api/run`
+### `POST /evaluate.json`
 
-Request body:
+Compatible with the official Rust Playground frontend. Request body:
+
+```json
+{
+  "code": "fn main() { println!(\"Hello, WASM!\"); }",
+  "channel": "stable",
+  "edition": "2021",
+  "crateType": "bin",
+  "mode": "debug",
+  "tests": false,
+  "backtrace": false
+}
+```
+
+Only `code` is required; the other fields are accepted for compatibility and
+ignored by this backend.
+
+### Legacy `POST /api/run`
+
+Still supported. Request body:
 
 ```json
 {
@@ -58,7 +79,7 @@ Request body:
 }
 ```
 
-Response body:
+Response body (same for both endpoints):
 
 ```json
 {
@@ -72,7 +93,7 @@ Response body:
 ## Example
 
 ```bash
-curl -X POST http://127.0.0.1:3000/api/run \
+curl -X POST http://127.0.0.1:9001/evaluate.json \
   -H "Content-Type: application/json" \
   -d '{"code":"fn main() { let result = (1..=100).sum::<i32>(); println!(\"Sum of 1 to 100: {}\", result); }"}'
 ```

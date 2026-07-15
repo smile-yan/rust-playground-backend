@@ -15,10 +15,11 @@ async fn main() -> anyhow::Result<()> {
     tracing::subscriber::set_global_default(subscriber)?;
 
     let app = Router::new()
-        .route("/api/run", post(api::run_code))
+        .route("/evaluate.json", post(api::evaluate))
+        .route("/api/run", post(api::evaluate))
         .layer(tower_http::cors::CorsLayer::permissive());
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 9001));
     info!("Rust Playground server listening on http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;

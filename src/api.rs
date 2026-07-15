@@ -6,9 +6,25 @@ use crate::{compiler, sandbox};
 
 const MAX_CODE_LENGTH: usize = 64 * 1024; // 64 KiB
 
+/// Request body compatible with the official Rust Playground `/evaluate.json` endpoint,
+/// while still accepting our legacy `{ "code": "..." }` format.
 #[derive(Debug, Deserialize)]
-pub struct RunRequest {
+#[allow(dead_code)]
+pub struct EvaluateRequest {
     code: String,
+    #[serde(default)]
+    channel: Option<String>,
+    #[serde(default)]
+    edition: Option<String>,
+    #[serde(default)]
+    #[serde(rename = "crateType")]
+    crate_type: Option<String>,
+    #[serde(default)]
+    mode: Option<String>,
+    #[serde(default)]
+    tests: Option<bool>,
+    #[serde(default)]
+    backtrace: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -19,8 +35,13 @@ pub struct RunResponse {
     error: Option<String>,
 }
 
-pub async fn run_code(Json(payload): Json<RunRequest>) -> (StatusCode, Json<RunResponse>) {
-    info!("Received code submission ({} bytes)", payload.code.len());
+pub async fn evaluate(Json(payload): Json<EvaluateRequest>) -> (StatusCode, Json<RunResponse>) {
+    info!(
+        "Received code submission ({} bytes) channel={:?} edition={:?}",
+        payload.code.len(),
+        payload.channel,
+        payload.edition
+    );
 
     if payload.code.len() > MAX_CODE_LENGTH {
         return (
