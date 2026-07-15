@@ -240,34 +240,60 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
 
+      - name: Resolve server IP
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Resolving $SSH_HOST ..."
+          IP=$(dig +short "$SSH_HOST" 2>/dev/null | grep -E '^[0-9]+\.' | head -n1)
+          if [[ -z "$IP" ]]; then
+            IP=$(getent ahostsv4 "$SSH_HOST" 2>/dev/null | awk 'NR==1 {print $1}')
+          fi
+          if [[ -z "$IP" ]]; then
+            IP=$(getent hosts "$SSH_HOST" 2>/dev/null | awk 'NR==1 {print $1}')
+          fi
+          if [[ -z "$IP" ]]; then
+            echo "::error::Could not resolve $SSH_HOST to an IP address"
+            exit 1
+          fi
+          echo "Resolved $SSH_HOST -> $IP"
+          echo "SERVER_IP=$IP" >> "$GITHUB_OUTPUT"
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+
       - name: Copy binary to cloud server
         shell: bash
+        env:
+          SERVER_IP: ${{ steps.resolve.outputs.SERVER_IP }}
         run: |
           set -euo pipefail
           COMMON_SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 -o ServerAliveCountMax=3 -o LogLevel=ERROR"
 
-          echo "=== Ensuring deploy directory exists ==="
-          ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
+          echo "=== Ensuring deploy directory exists on $SERVER_IP ==="
+          ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SERVER_IP" \
             "mkdir -p ${DEPLOY_PATH}" 2>&1 || {
               echo "mkdir failed, trying with sudo..."
-              ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
+              ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SERVER_IP" \
                 "sudo mkdir -p ${DEPLOY_PATH} && sudo chown \$(id -u):\$(id -g) ${DEPLOY_PATH}" 2>&1 || {
                   echo "::error::Cannot create ${DEPLOY_PATH}. Please ensure the directory exists and the SSH user has write permission, or change DEPLOY_PATH to a directory under the user's home."
                   exit 1
                 }
             }
 
-          echo "=== Uploading and extracting binary via tar over SSH ==="
+          echo "=== Uploading and extracting binary via tar over SSH to $SERVER_IP ==="
           tar czf - -C dist rust-playground-linux-x64 rust-playground-linux-x64.sha256 | \
-            ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
+            ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SERVER_IP" \
               "tar xzf - -C ${DEPLOY_PATH} && ls -lh ${DEPLOY_PATH}"
 
       - name: Restart service on cloud server
         shell: bash
+        env:
+          SERVER_IP: ${{ steps.resolve.outputs.SERVER_IP }}
         run: |
           set -euo pipefail
           COMMON_SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 -o ServerAliveCountMax=3 -o LogLevel=ERROR"
-          ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" << EOF
+          ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SERVER_IP" << EOF
           set -euo pipefail
 
           APP_DIR="$DEPLOY_PATH"
@@ -320,9 +346,11 @@ jobs:
 
       - name: Verify service is reachable
         shell: bash
+        env:
+          SERVER_IP: ${{ steps.resolve.outputs.SERVER_IP }}
         run: |
           set -euo pipefail
-          url="http://$SSH_HOST:9001/ping"
+          url="http://$SERVER_IP:9001/ping"
           max_attempts=3
           for attempt in $(seq 1 $max_attempts); do
             echo "Health check attempt $attempt/$max_attempts: $url"
