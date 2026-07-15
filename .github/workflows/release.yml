@@ -243,7 +243,7 @@ jobs:
           echo "=== Uploading deploy.tar.gz via ssh + cat ==="
           ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 -o ServerAliveCountMax=3 \
             -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" \
-            "cat > ${DEPLOY_PATH}/deploy.tar.gz" < "dist/deploy.tar.gz"
+            "mkdir -p ${DEPLOY_PATH} && cat > ${DEPLOY_PATH}/deploy.tar.gz" < "dist/deploy.tar.gz"
 
           echo "=== Verifying remote archive ==="
           ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 -o ServerAliveCountMax=3 \
