@@ -23,6 +23,8 @@ impl std::fmt::Debug for CompileError {
 
 impl std::error::Error for CompileError {}
 
+const WASI_TARGET: &str = "wasm32-wasip1";
+
 pub async fn compile_to_wasm(code: &str) -> anyhow::Result<Vec<u8>> {
     let temp_dir = tempfile::tempdir()?;
     let source_path = temp_dir.path().join("main.rs");
@@ -31,11 +33,11 @@ pub async fn compile_to_wasm(code: &str) -> anyhow::Result<Vec<u8>> {
     fs::write(&source_path, code).await?;
     debug!("Wrote source code to {:?}", source_path);
 
-    let target = detect_wasi_target();
-    info!("Compiling with target: {}", target);
+    ensure_target_installed(WASI_TARGET).await;
+    info!("Compiling with target: {}", WASI_TARGET);
 
     let mut child = Command::new("rustc")
-        .arg(format!("--target={}", target))
+        .arg(format!("--target={}", WASI_TARGET))
         .arg("-C")
         .arg("opt-level=2")
         .arg("-o")
@@ -95,25 +97,12 @@ pub async fn compile_to_wasm(code: &str) -> anyhow::Result<Vec<u8>> {
     Ok(wasm_bytes)
 }
 
-fn detect_wasi_target() -> &'static str {
-    // Newer Rust toolchains renamed wasm32-wasi to wasm32-wasip1.
-    // Prefer the modern name and fall back to the legacy name.
-    if is_target_installed("wasm32-wasip1") {
-        "wasm32-wasip1"
-    } else {
-        "wasm32-wasi"
-    }
-}
-
-fn is_target_installed(target: &str) -> bool {
-    match std::process::Command::new("rustup")
-        .args(["target", "list", "--installed"])
-        .output()
-    {
-        Ok(output) => {
-            let installed = String::from_utf8_lossy(&output.stdout);
-            installed.lines().any(|line| line.trim() == target)
-        }
-        Err(_) => false,
-    }
+async fn ensure_target_installed(target: &str) {
+    info!("Ensuring target {} is installed", target);
+    let _ = Command::new("rustup")
+        .args(["target", "add", target])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .await;
 }
