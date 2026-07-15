@@ -286,7 +286,7 @@ jobs:
             ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SERVER_IP" \
               "tar xzf - -C ${DEPLOY_PATH} && ls -lh ${DEPLOY_PATH}"
 
-      - name: Restart service on cloud server
+      - name: Start application on cloud server
         shell: bash
         env:
           SERVER_IP: ${{ steps.resolve.outputs.SERVER_IP }}
@@ -315,34 +315,49 @@ jobs:
           if ! command -v rustc &>/dev/null; then
             echo "Installing Rust toolchain..."
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
-            source "\$HOME/.cargo/env"
           fi
+          source "\$HOME/.cargo/env" || true
+          echo "Setting default Rust toolchain..."
+          rustup default stable || true
           echo "Adding wasm32-wasip1 target..."
           rustup target add wasm32-wasip1 || true
           echo "Rust target check complete"
 
-          # Restart the service if it exists, otherwise start the binary directly
-          if systemctl list-unit-files | grep -q "^rust-playground.service"; then
-            sudo systemctl daemon-reload
-            sudo systemctl restart rust-playground
-            sudo systemctl is-active --quiet rust-playground && echo "Service is running"
-          else
-            echo "Service rust-playground.service not found; starting binary directly..."
-            # Ensure rustup environment is available for the binary
-            if [ -f "\$HOME/.cargo/env" ]; then
-              source "\$HOME/.cargo/env"
-            fi
-            # Stop any existing instance
-            pkill -f "rust-playground" || true
-            sleep 1
-            # Start in background, fully detached from the SSH session
-            nohup "\${APP_DIR}/rust-playground" > "\${APP_DIR}/rust-playground.log" 2>&1 < /dev/null &
-            disown || true
-            echo "Started rust-playground (PID: \$!)"
+          # Stop any existing instance
+          pkill -f "rust-playground" || true
+          sleep 1
+
+          # Ensure rustup environment is available for the binary
+          if [ -f "\$HOME/.cargo/env" ]; then
+            source "\$HOME/.cargo/env"
           fi
+
+          # Start in background, fully detached from the SSH session
+          nohup "\${APP_DIR}/rust-playground" > "\${APP_DIR}/rust-playground.log" 2>&1 < /dev/null &
+          disown || true
+          echo "Started rust-playground (PID: \$!)"
+
+          # Show process status and recent log for diagnostics
+          sleep 1
+          ps -p \$! -o pid,ppid,cmd || true
+          tail -n 20 "\${APP_DIR}/rust-playground.log" || true
 
           echo "Deployment completed"
           EOF
+
+      - name: Print remote log on failure
+        if: failure()
+        shell: bash
+        env:
+          SERVER_IP: ${{ steps.resolve.outputs.SERVER_IP }}
+        run: |
+          COMMON_SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 -o ServerAliveCountMax=3 -o LogLevel=ERROR"
+          echo "=== Remote process status ==="
+          ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SERVER_IP" \
+            "ps aux | grep -i rust-playground | grep -v grep || true" || true
+          echo "=== Remote log tail ==="
+          ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SERVER_IP" \
+            "tail -n 50 ${DEPLOY_PATH}/rust-playground.log 2>/dev/null || echo 'No log file found'" || true
 
       - name: Verify service is reachable
         shell: bash
@@ -354,7 +369,9 @@ jobs:
           max_attempts=3
           for attempt in $(seq 1 $max_attempts); do
             echo "Health check attempt $attempt/$max_attempts: $url"
-            if curl -s -m 15 "$url" | grep -q "pong"; then
+            response=$(curl -s -m 15 -w "\nHTTP %{http_code}" "$url" || true)
+            echo "$response"
+            if echo "$response" | tail -n1 | grep -q "HTTP 200"; then
               echo "Service is reachable"
               exit 0
             fi
