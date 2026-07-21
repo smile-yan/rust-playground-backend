@@ -1,77 +1,63 @@
-# Rust Playground (Backend)
+# Rust Playground 后端
 
-A Rust backend service that receives user-submitted Rust code, compiles it to
-WebAssembly, and executes it inside a locked-down [wasmtime](https://wasmtime.dev/)
-sandbox.
+一个用 Rust 编写的后端服务，接收用户提交的 Rust 代码，编译成 WebAssembly 后在 wasmtime 沙箱中安全执行。
 
-## Features
+## 功能
 
-- Axum-based HTTP API at `POST /evaluate.json` (also supports legacy `POST /api/run`)
-- Listens on `0.0.0.0:9001` by default
-- Compatible with the official Rust Playground frontend request format
-- `rustc` compiles user code to `wasm32-wasip1`
-- wasmtime sandbox with:
-  - 256 MB memory limit (StoreLimits + `trap_on_grow_failure`)
-  - 5-second execution timeout via epoch interruption
-  - No filesystem access
-  - No network access
-  - No environment variables
-  - No subprocess spawning
+- 提供 HTTP API 运行 Rust 代码
+- 兼容官方 Rust Playground 的请求格式
+- 使用 wasmtime 沙箱执行，限制内存和运行时间
 
-## Project Structure
+## 环境要求
 
-```
-rust-playground/
-├── Cargo.toml          # Backend dependencies
-├── src/
-│   ├── main.rs         # Axum server bootstrap
-│   ├── api.rs          # HTTP route handlers
-│   ├── compiler.rs     # rustc invocation
-│   └── sandbox.rs      # wasmtime execution wrapper
-└── README.md
-```
-
-## Prerequisites
-
-- [Rust](https://rustup.rs/) (stable toolchain, tested with 1.96+)
-- The `wasm32-wasip1` target (newer name for `wasm32-wasi`):
+- 安装 [Rust](https://rustup.rs/)（1.96 或更高版本）
+- 安装 `wasm32-wasip1` 编译目标：
 
 ```bash
 rustup target add wasm32-wasip1
 ```
 
-## Running the Server
+## 运行服务
+
+### 方式一：源码运行
 
 ```bash
 cargo run
 ```
 
-The server starts on `http://0.0.0.0:9001`.
+### 方式二：使用预编译二进制
 
-## API
+从 `releases/` 目录下载适合你系统的二进制文件：
 
-### `POST /evaluate.json`
+| 系统 | 选择文件 |
+|------|----------|
+| Linux x86_64 | `rust-playground-x86_64-unknown-linux-gnu` |
+| macOS Intel | `rust-playground-x86_64-apple-darwin` |
+| macOS Apple Silicon | `rust-playground-aarch64-apple-darwin` |
+| Windows x86_64 | `rust-playground-x86_64-pc-windows-msvc.exe` |
 
-Compatible with the official Rust Playground frontend. Request body:
+Linux / macOS 启动示例：
 
-```json
-{
-  "code": "fn main() { println!(\"Hello, WASM!\"); }",
-  "channel": "stable",
-  "edition": "2021",
-  "crateType": "bin",
-  "mode": "debug",
-  "tests": false,
-  "backtrace": false
-}
+```bash
+chmod +x rust-playground-x86_64-apple-darwin
+./rust-playground-x86_64-apple-darwin
 ```
 
-Only `code` is required; the other fields are accepted for compatibility and
-ignored by this backend.
+Windows 启动示例：
 
-### Legacy `POST /api/run`
+```powershell
+.\rust-playground-x86_64-pc-windows-msvc.exe
+```
 
-Still supported. Request body:
+> 注意：使用预编译二进制时，仍需要本地安装 Rust 工具链和 `wasm32-wasip1` 目标，因为服务会调用 `rustc` 编译用户代码。
+
+服务启动后监听 `http://0.0.0.0:9001`。
+
+## 使用接口
+
+### POST /evaluate.json
+
+请求体：
 
 ```json
 {
@@ -79,7 +65,9 @@ Still supported. Request body:
 }
 ```
 
-Response body (same for both endpoints):
+只有 `code` 字段是必需的，其他字段仅作兼容保留。
+
+返回示例：
 
 ```json
 {
@@ -90,45 +78,24 @@ Response body (same for both endpoints):
 }
 ```
 
-## Example
+### 命令行示例
 
 ```bash
 curl -X POST http://127.0.0.1:9001/evaluate.json \
   -H "Content-Type: application/json" \
-  -d '{"code":"fn main() { let result = (1..=100).sum::<i32>(); println!(\"Sum of 1 to 100: {}\", result); }"}'
+  -d '{"code":"fn main() { let sum: i32 = (1..=100).sum(); println!(\"{}\", sum); }"}'
 ```
 
-Expected output:
+## 安全限制
 
-```json
-{
-  "success": true,
-  "stdout": "Sum of 1 to 100: 5050\n",
-  "stderr": "",
-  "error": null
-}
-```
+- 内存上限：256 MB
+- 运行超时：5 秒
+- 禁止文件系统、网络、环境变量和子进程访问
 
-## Security Notes
+## 注意事项
 
-This is an MVP intended for learning and local use. Before exposing it to the
-public internet, consider additional hardening:
+本项目是一个最小可用版本，适合学习和本地使用。如需部署到公网，建议增加限流、容器隔离等安全措施。
 
-- Rate limiting per IP/user
-- Shorter maximum code length
-- Container or VM-level isolation for the backend process
-- OS-level resource quotas (CPU, memory) for the cargo/rustc process
-- Input sanitization and abuse detection
-- Do not run the compiler or wasmtime as root
-
-### Known Limitations
-
-- The 256 MB memory limit is enforced through wasmtime's `StoreLimits` on linear
-  memory growth. It catches typical `malloc`/`realloc` growth paths, but very
-  large single `calloc` allocations in wasi-libc may bypass the linear-memory
-  grow path on some platforms. For stronger guarantees, run the whole service in
-  a memory-capped container or cgroup.
-
-## License
+## 许可证
 
 MIT
