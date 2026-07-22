@@ -4,7 +4,7 @@
 
 <img alt="image" src="https://github.com/user-attachments/assets/f4c41da8-9a57-40ce-99b1-4ed493f110a9" />
 
-欢迎访问 rust 学习 playground: ![https://rust.smileyan.cn/](https://rust.smileyan.cn/)
+欢迎访问 rust 学习 playground: [https://rust.smileyan.cn/](https://rust.smileyan.cn/)
 
 ## 功能
 
