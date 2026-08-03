@@ -46,12 +46,20 @@ pub async fn compile_cpp_to_wasm(code: &str, language: &str) -> anyhow::Result<V
         zig_subcmd, language
     );
 
-    let mut child = Command::new("zig")
-        .arg(zig_subcmd)
+    let mut cmd = Command::new("zig");
+    cmd.arg(zig_subcmd)
         .arg("-target")
         .arg("wasm32-wasi-musl")
         .arg("-o")
-        .arg(&output_path)
+        .arg(&output_path);
+
+    // Zig 的 libc++ 在 wasm32-wasi-musl 目标下默认不包含线程支持，
+    // 而 <iostream> 等头文件会间接引入线程相关声明，需显式禁用。
+    if language == "cpp" {
+        cmd.arg("-D_LIBCPP_HAS_NO_THREADS");
+    }
+
+    let mut child = cmd
         .arg(&source_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
