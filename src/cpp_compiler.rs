@@ -3,7 +3,7 @@ use tokio::fs;
 use tokio::process::Command;
 use tracing::{debug, error, info};
 
-const COMPILE_TIMEOUT_SECONDS: u64 = 30;
+const COMPILE_TIMEOUT_SECONDS: u64 = 120;
 
 pub struct CompileError {
     pub message: String,
