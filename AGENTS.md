@@ -172,8 +172,8 @@ git push origin v0.0.1
 ### CI 流程
 
 1. **build-linux-x64**：使用 `x86_64-unknown-linux-musl` 目标构建静态二进制，避免 glibc 版本不兼容。
-2. **build-cross**：为以下目标交叉编译：
-   - `aarch64-unknown-linux-gnu`（Linux ARM64）
+2. **build-cross**：为以下平台构建发布二进制：
+   - `aarch64-unknown-linux-gnu`（Linux ARM64，原生 ARM runner）
    - `x86_64-apple-darwin`（macOS Intel）
    - `aarch64-apple-darwin`（macOS Apple Silicon）
    - `x86_64-pc-windows-msvc`（Windows x64）

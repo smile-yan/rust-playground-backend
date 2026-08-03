@@ -31,22 +31,23 @@ cargo run
 
 | 系统 | 选择文件 |
 |------|----------|
-| Linux x86_64 | `rust-playground-x86_64-unknown-linux-gnu` |
-| macOS Intel | `rust-playground-x86_64-apple-darwin` |
-| macOS Apple Silicon | `rust-playground-aarch64-apple-darwin` |
-| Windows x86_64 | `rust-playground-x86_64-pc-windows-msvc.exe` |
+| Linux x86_64 | `rust-playground-linux-x64` |
+| Linux ARM64 | `rust-playground-linux-arm64` |
+| macOS Intel | `rust-playground-macos-x64` |
+| macOS Apple Silicon | `rust-playground-macos-arm64` |
+| Windows x86_64 | `rust-playground-windows-x64.exe` |
 
 Linux / macOS 启动示例：
 
 ```bash
-chmod +x rust-playground-x86_64-apple-darwin
-./rust-playground-x86_64-apple-darwin
+chmod +x rust-playground-linux-x64
+./rust-playground-linux-x64
 ```
 
 Windows 启动示例：
 
 ```powershell
-.\rust-playground-x86_64-pc-windows-msvc.exe
+.\rust-playground-windows-x64.exe
 ```
 
 > 注意：使用预编译二进制时，仍需要本地安装 Rust 工具链和 `wasm32-wasip1` 目标，因为服务会调用 `rustc` 编译用户代码。
