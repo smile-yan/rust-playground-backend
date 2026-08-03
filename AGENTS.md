@@ -6,14 +6,14 @@
 
 ## 项目概述
 
-`rust-playground` 是一个用 Rust 编写的后端服务，用于接收用户提交的 Rust 或 C/C++ 代码，将其编译为 WebAssembly（WASM），并在 `wasmtime` 沙箱中安全执行。
+`rust-playground` 是一个用 Rust 编写的后端服务，用于接收用户提交的 Rust 代码，将其编译为 WebAssembly（WASM），并在 `wasmtime` 沙箱中安全执行。
 
-它是官方 Rust Playground 的轻量替代后端，兼容其 `/evaluate.json` 请求格式，同时保留了一个本地兼容端点 `/api/run`。此外，服务还提供了 `/evaluate-cpp.json` 与 `/api/run-cpp` 端点，用于执行 C 或 C++ 代码。
+它是官方 Rust Playground 的轻量替代后端，兼容其 `/evaluate.json` 请求格式，同时保留了一个本地兼容端点 `/api/run`。
 
 主要能力：
 
-- 通过 HTTP API 接收 Rust 或 C/C++ 源代码。
-- Rust 代码使用本地 `rustc` 编译为 `wasm32-wasip1` 目标；C/C++ 代码使用 `zig cc` / `zig c++` 编译为 `wasm32-wasi-musl` 目标。
+- 通过 HTTP API 接收 Rust 源代码。
+- 使用本地 `rustc` 将代码编译为 `wasm32-wasip1` 目标。
 - 在 `wasmtime` 中运行生成的 WASM，限制内存和运行时间。
 - 返回执行结果（stdout / stderr / 错误信息）。
 
@@ -32,7 +32,6 @@
 - **CORS**：tower-http
 - **临时文件**：tempfile
 - **错误处理**：anyhow
-- **C/C++ 编译器**：Zig
 
 ---
 
@@ -50,7 +49,6 @@ rust-playground/
 │   ├── main.rs             # 服务入口：路由、启动、日志
 │   ├── api.rs              # HTTP API：请求解析、响应构造、长度校验
 │   ├── compiler.rs         # 调用 rustc 将 Rust 源码编译为 WASM
-│   ├── cpp_compiler.rs     # 调用 zig cc 将 C/C++ 源码编译为 WASM
 │   └── sandbox.rs          # 使用 wasmtime 沙箱执行 WASM
 ├── docs/
 │   ├── deployment.md       # 服务器部署文档
@@ -132,33 +130,6 @@ cargo build --release
 
 与 `/evaluate.json` 完全相同的处理函数，仅作为本地历史兼容入口。
 
-### `POST /evaluate-cpp.json`
-
-执行 C/C++ 代码。请求体格式为：
-
-```json
-{
-  "code": "#include <iostream>\nint main() {\n    std::cout << \"Hello, WASM!\" << std::endl;\n    return 0;\n}"
-}
-```
-
-`code` 字段为必需，`language` 字段可选，默认为 `"cpp"`，可指定为 `"c"` 或 `"cpp"`。
-
-返回示例：
-
-```json
-{
-  "success": true,
-  "stdout": "Hello, WASM!\n",
-  "stderr": "",
-  "error": null
-}
-```
-
-### `POST /api/run-cpp`
-
-与 `/evaluate-cpp.json` 完全相同的处理函数，仅作为本地历史兼容入口。
-
 ---
 
 ## 代码组织
@@ -168,7 +139,6 @@ cargo build --release
 | `src/main.rs` | 配置 `tracing` 日志、注册路由、绑定 `0.0.0.0:9001`、启动 axum 服务。 |
 | `src/api.rs` | 定义 `EvaluateRequest` / `RunResponse` 结构体；处理代码长度限制（最大 64 KiB）；编排 `compiler` 与 `sandbox`；将内部错误转换为 HTTP 响应。 |
 | `src/compiler.rs` | 将源码写入临时文件，调用 `rustc --target=wasm32-wasip1 -C opt-level=2` 编译，30 秒超时；自动调用 `rustup target add wasm32-wasip1` 确保目标已安装。 |
-| `src/cpp_compiler.rs` | 调用 `zig cc -target wasm32-wasi-musl` 将 C/C++ 源码编译为 WASM，30 秒超时。 |
 | `src/sandbox.rs` | 使用 `wasmtime` 运行 WASM。配置 epoch 中断、256 MB 内存上限、stdout/stderr 内存管道、5 秒执行超时；在独立阻塞线程中执行，避免阻塞 Tokio 运行时。 |
 
 ---
@@ -181,7 +151,6 @@ cargo build --release
 - **运行超时**：5 秒（`src/sandbox.rs`）。
 - **WASI 能力**：默认 `wasmtime_wasi::WasiCtxBuilder::new().build_p1()`，不启用文件系统、网络、环境变量或子进程访问。
 - **执行隔离**：每个请求使用独立的 `Engine`、`Store` 和 `Module`。
-- **C/C++ 沙箱执行**：C/C++ 代码经 Zig 编译为 WASM 后，同样进入 `wasmtime` 沙箱执行，受相同的内存与运行时间限制。
 
 > 当前实现未做请求限流。若暴露到公网，请在反向代理或负载均衡层补充限流策略。
 
@@ -208,7 +177,7 @@ git push origin v0.0.1
    - `x86_64-apple-darwin`（macOS Intel）
    - `aarch64-apple-darwin`（macOS Apple Silicon）
    - `x86_64-pc-windows-msvc`（Windows x64）
-3. **deploy**：将 `linux-x64` 二进制通过 SSH 上传到服务器部署目录，校验 sha256，确保 Rust 工具链与 `wasm32-wasip1` 目标存在，检查并安装 Zig（如未安装），启动服务，并通过 `GET /ping` 健康检查。
+3. **deploy**：将 `linux-x64` 二进制通过 SSH 上传到服务器部署目录，校验 sha256，确保 Rust 工具链与 `wasm32-wasip1` 目标存在，启动服务，并通过 `GET /ping` 健康检查。
 4. **release**：创建 GitHub Release，上传所有预编译二进制与校验文件。
 
 ### 部署所需 Secrets
@@ -272,8 +241,7 @@ curl http://127.0.0.1:9001/ping
 ## 注意事项与常见坑
 
 - 服务运行时会调用本机的 `rustc` 和 `rustup`，因此即使使用预编译二进制，服务器也必须安装 Rust 工具链与 `wasm32-wasip1` 目标。
-- C/C++ 端点依赖 `zig`：部署脚本会在服务器上检查 `zig`，若不存在则自动下载安装（Linux x86_64）。也可在部署前手动安装并确保 `zig` 在 `PATH` 中。
-- `wasm32-wasi` 在新工具链中已重命名为 `wasm32-wasip1`，Rust 代码统一使用后者；C/C++ 代码则使用 Zig 可识别的 `wasm32-wasi-musl` 目标。
+- `wasm32-wasi` 在新工具链中已重命名为 `wasm32-wasip1`，代码统一使用后者。
 - 服务监听 `0.0.0.0:9001`，请确保防火墙与安全组放行该端口。
 - 部署脚本使用 `setsid` 启动进程以脱离 SSH 会话；若使用 systemd，请按 `docs/systemd.md` 配置，并确保 `PATH` 包含 `rustc` 所在目录。
 - 修改监听端口需要编辑 `src/main.rs` 中 `SocketAddr::from(([0, 0, 0, 0], 9001))` 后重新部署。

@@ -2,10 +2,6 @@
 
 一个用 Rust 编写的后端服务，接收用户提交的 Rust 代码，编译成 WebAssembly 后在 wasmtime 沙箱中安全执行。
 
-<img alt="image" src="https://github.com/user-attachments/assets/f4c41da8-9a57-40ce-99b1-4ed493f110a9" />
-
-欢迎访问 rust 学习 playground: [https://rust.smileyan.cn/](https://rust.smileyan.cn/)
-
 ## 功能
 
 - 提供 HTTP API 运行 Rust 代码
@@ -19,32 +15,6 @@
 
 ```bash
 rustup target add wasm32-wasip1
-```
-
-### Zig
-
-C/C++ 代码通过 Zig 编译为 `wasm32-wasi-musl`：
-
-#### macOS
-
-```bash
-brew install zig
-```
-
-#### Linux
-
-```bash
-# 以 x86_64 为例，其他架构请替换对应 tarball
-wget https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
-tar xf zig-linux-x86_64-0.13.0.tar.xz
-sudo mv zig-linux-x86_64-0.13.0 /opt/zig
-sudo ln -s /opt/zig/zig /usr/local/bin/zig
-```
-
-安装后验证：
-
-```bash
-zig version
 ```
 
 ## 运行服务
@@ -108,27 +78,6 @@ Windows 启动示例：
 }
 ```
 
-### `POST /evaluate-cpp.json`
-
-执行 C 或 C++ 代码。
-
-请求体：
-
-```json
-{
-  "code": "#include <iostream>\nint main() { std::cout << \"Hello, C++!\" << std::endl; return 0; }",
-  "language": "cpp"
-}
-```
-
-`language` 可选 `"c"` 或 `"cpp"`，默认为 `"cpp"`。
-
-响应体与 `/evaluate.json` 格式一致。
-
-### `POST /api/run-cpp`
-
-与 `/evaluate-cpp.json` 完全相同的处理函数，仅作为本地历史兼容入口。
-
 ### 命令行示例
 
 ```bash
@@ -139,8 +88,6 @@ curl -X POST http://127.0.0.1:9001/evaluate.json \
 
 ## 安全限制
 
-- 代码长度上限：64 KiB
-- 编译超时：30 秒
 - 内存上限：256 MB
 - 运行超时：5 秒
 - 禁止文件系统、网络、环境变量和子进程访问
