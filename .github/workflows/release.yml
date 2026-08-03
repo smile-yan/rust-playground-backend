@@ -134,7 +134,7 @@ jobs:
             cp "target/${{ matrix.target }}/release/rust-playground.exe" "dist/${BINARY}"
             cd dist
             sha256sum "${BINARY}" > "${BINARY}.sha256"
-            zip "${ARCHIVE}" "${BINARY}" "${BINARY}.sha256"
+            powershell -Command "Compress-Archive -Path '${BINARY}','${BINARY}.sha256' -DestinationPath '${ARCHIVE}' -Force"
           else
             BINARY="rust-playground-${{ matrix.arch }}"
             ARCHIVE="rust-playground-${{ matrix.arch }}.tar.gz"
@@ -342,13 +342,13 @@ jobs:
           if ! command -v zig &>/dev/null; then
             echo "Zig not found, installing Zig..."
             ZIG_VERSION="0.13.0"
-            ZIG_DIR="zig-linux-x86_64-${ZIG_VERSION}"
-            curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/${ZIG_DIR}.tar.xz" -o /tmp/zig.tar.xz
+            ZIG_DIR="zig-linux-x86_64-\${ZIG_VERSION}"
+            curl -fsSL "https://ziglang.org/download/\${ZIG_VERSION}/\${ZIG_DIR}.tar.xz" -o /tmp/zig.tar.xz
             tar -xf /tmp/zig.tar.xz -C /tmp
             if [ -d "/usr/local/zig" ]; then
               sudo rm -rf /usr/local/zig
             fi
-            sudo mv "/tmp/${ZIG_DIR}" /usr/local/zig
+            sudo mv "/tmp/\${ZIG_DIR}" /usr/local/zig
             sudo ln -sf /usr/local/zig/zig /usr/local/bin/zig
             rm -f /tmp/zig.tar.xz
           fi
