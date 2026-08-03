@@ -23,23 +23,33 @@ impl std::fmt::Debug for CompileError {
 
 impl std::error::Error for CompileError {}
 
-const WASI_TARGET: &str = "wasm32-wasip1";
-
-pub async fn compile_to_wasm(code: &str) -> anyhow::Result<Vec<u8>> {
+pub async fn compile_cpp_to_wasm(code: &str, language: &str) -> anyhow::Result<Vec<u8>> {
     let temp_dir = tempfile::tempdir()?;
-    let source_path = temp_dir.path().join("main.rs");
+    let source_ext = match language {
+        "c" => "c",
+        "cpp" => "cpp",
+        _ => "cpp",
+    };
+    let source_path = temp_dir.path().join(format!("main.{}", source_ext));
     let output_path = temp_dir.path().join("main.wasm");
 
     fs::write(&source_path, code).await?;
-    debug!("Wrote source code to {:?}", source_path);
+    debug!("Wrote C/C++ source code to {:?}", source_path);
 
-    ensure_target_installed(WASI_TARGET).await;
-    info!("Compiling with target: {}", WASI_TARGET);
+    let zig_subcmd = match language {
+        "c" => "cc",
+        _ => "c++",
+    };
 
-    let mut child = Command::new("rustc")
-        .arg(format!("--target={}", WASI_TARGET))
-        .arg("-C")
-        .arg("opt-level=2")
+    info!(
+        "Compiling C/C++ with zig {}, language: {}",
+        zig_subcmd, language
+    );
+
+    let mut child = Command::new("zig")
+        .arg(zig_subcmd)
+        .arg("-target")
+        .arg("wasm32-wasi-musl")
         .arg("-o")
         .arg(&output_path)
         .arg(&source_path)
@@ -71,7 +81,7 @@ pub async fn compile_to_wasm(code: &str) -> anyhow::Result<Vec<u8>> {
     let stderr_text = String::from_utf8_lossy(&stderr_buf).to_string();
 
     if !exit_status.success() {
-        error!("rustc failed with status: {:?}", exit_status);
+        error!("zig {} failed with status: {:?}", zig_subcmd, exit_status);
         return Err(CompileError {
             message: stderr_text,
         }
@@ -79,7 +89,7 @@ pub async fn compile_to_wasm(code: &str) -> anyhow::Result<Vec<u8>> {
     }
 
     if !stderr_text.is_empty() {
-        info!("rustc emitted warnings: {}", stderr_text);
+        info!("zig {} emitted warnings: {}", zig_subcmd, stderr_text);
     }
 
     let wasm_bytes = fs::read(&output_path).await?;
@@ -92,14 +102,4 @@ pub async fn compile_to_wasm(code: &str) -> anyhow::Result<Vec<u8>> {
 
     debug!("Compiled WASM size: {} bytes", wasm_bytes.len());
     Ok(wasm_bytes)
-}
-
-async fn ensure_target_installed(target: &str) {
-    info!("Ensuring target {} is installed", target);
-    let _ = Command::new("rustup")
-        .args(["target", "add", target])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .await;
 }

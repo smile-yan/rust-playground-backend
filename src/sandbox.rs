@@ -63,10 +63,9 @@ fn run_wasm_sync(wasm_bytes: &[u8]) -> anyhow::Result<SandboxOutput> {
     );
     store.limiter(|state| &mut state.limits);
 
-    wasmtime_wasi::preview1::add_to_linker_sync(
-        &mut linker,
-        |state: &mut SandboxState| &mut state.wasi,
-    )?;
+    wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |state: &mut SandboxState| {
+        &mut state.wasi
+    })?;
 
     store.set_epoch_deadline(EPOCH_DEADLINE_TICKS);
 
@@ -81,7 +80,10 @@ fn run_wasm_sync(wasm_bytes: &[u8]) -> anyhow::Result<SandboxOutput> {
     let engine_for_watchdog = engine.clone();
     let watchdog = thread::spawn(move || {
         thread::sleep(Duration::from_secs(EXECUTION_TIMEOUT_SECONDS));
-        warn!("Execution exceeded {} seconds, incrementing epoch", EXECUTION_TIMEOUT_SECONDS);
+        warn!(
+            "Execution exceeded {} seconds, incrementing epoch",
+            EXECUTION_TIMEOUT_SECONDS
+        );
         timed_out_for_watchdog.store(true, Ordering::SeqCst);
         engine_for_watchdog.increment_epoch();
     });
@@ -111,7 +113,10 @@ fn run_wasm_sync(wasm_bytes: &[u8]) -> anyhow::Result<SandboxOutput> {
             let error_msg = if timed_out.load(Ordering::SeqCst) {
                 "Execution timed out (exceeded 5 seconds)".to_string()
             } else if lower.contains("memory") || lower.contains("growing memory") {
-                format!("Memory limit exceeded (max {} MB)", MEMORY_LIMIT_BYTES / 1024 / 1024)
+                format!(
+                    "Memory limit exceeded (max {} MB)",
+                    MEMORY_LIMIT_BYTES / 1024 / 1024
+                )
             } else {
                 format!("Runtime error: {}", e)
             };
