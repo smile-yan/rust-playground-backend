@@ -47,13 +47,13 @@ jobs:
           cp "target/x86_64-unknown-linux-musl/release/rust-playground" "dist/${BINARY}"
           cd dist
           sha256sum "${BINARY}" > "${BINARY}.sha256"
-          tar czf "${BINARY}.tar.gz" "${BINARY}" "${BINARY}.sha256"
+          tar cJf "${BINARY}.tar.xz" "${BINARY}" "${BINARY}.sha256"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: rust-playground-linux-x64
-          path: dist/*.tar.gz
+          path: dist/*.tar.xz
           if-no-files-found: error
 
   build-cross:
@@ -137,11 +137,11 @@ jobs:
             powershell -Command "Compress-Archive -Path '${BINARY}','${BINARY}.sha256' -DestinationPath '${ARCHIVE}' -Force"
           else
             BINARY="rust-playground-${{ matrix.arch }}"
-            ARCHIVE="rust-playground-${{ matrix.arch }}.tar.gz"
+            ARCHIVE="rust-playground-${{ matrix.arch }}.tar.xz"
             cp "target/${{ matrix.target }}/release/rust-playground" "dist/${BINARY}"
             cd dist
             sha256sum "${BINARY}" > "${BINARY}.sha256"
-            tar czf "${ARCHIVE}" "${BINARY}" "${BINARY}.sha256"
+            tar cJf "${ARCHIVE}" "${BINARY}" "${BINARY}.sha256"
           fi
 
       - name: Upload artifact
@@ -149,7 +149,7 @@ jobs:
         with:
           name: rust-playground-${{ matrix.arch }}
           path: |
-            dist/*.tar.gz
+            dist/*.tar.xz
             dist/*.zip
           if-no-files-found: error
 
@@ -281,7 +281,7 @@ jobs:
         run: |
           set -euo pipefail
           COMMON_SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 -o ServerAliveCountMax=3 -o LogLevel=ERROR"
-          ARCHIVE="rust-playground-linux-x64.tar.gz"
+          ARCHIVE="rust-playground-linux-x64.tar.xz"
 
           echo "=== Ensuring deploy directory exists on $SERVER_IP ==="
           ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SERVER_IP" \
@@ -299,7 +299,7 @@ jobs:
 
           echo "=== Extracting archive and cleaning up on $SERVER_IP ==="
           ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SERVER_IP" \
-            "cd ${DEPLOY_PATH} && tar xzf ${ARCHIVE} && rm -f ${ARCHIVE} && ls -lh ${DEPLOY_PATH}"
+            "cd ${DEPLOY_PATH} && tar xJf ${ARCHIVE} && rm -f ${ARCHIVE} && ls -lh ${DEPLOY_PATH}"
 
       - name: Start application on cloud server
         shell: bash
