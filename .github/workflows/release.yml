@@ -47,7 +47,12 @@ jobs:
           cp "target/x86_64-unknown-linux-musl/release/rust-playground" "dist/${BINARY}"
           cd dist
           sha256sum "${BINARY}" > "${BINARY}.sha256"
+          echo "Original binary size: $(du -h "${BINARY}" | cut -f1)"
+          START_TIME=$(date +%s)
           tar cJf "${BINARY}.tar.xz" "${BINARY}" "${BINARY}.sha256"
+          END_TIME=$(date +%s)
+          echo "Archive size: $(du -h "${BINARY}.tar.xz" | cut -f1)"
+          echo "Compression time: $((END_TIME - START_TIME)) seconds"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
@@ -294,12 +299,20 @@ jobs:
                 }
             }
 
+          echo "Archive size: $(du -h "dist/${ARCHIVE}" | cut -f1)"
+
           echo "=== Uploading compressed archive to $SERVER_IP ==="
+          START_UPLOAD=$(date +%s)
           scp ${COMMON_SSH_OPTS} -P "$SSH_PORT" -i ~/.ssh/deploy_key "dist/${ARCHIVE}" "$SSH_USER@$SERVER_IP:${DEPLOY_PATH}/"
+          END_UPLOAD=$(date +%s)
+          echo "Upload time: $((END_UPLOAD - START_UPLOAD)) seconds"
 
           echo "=== Extracting archive and cleaning up on $SERVER_IP ==="
+          START_EXTRACT=$(date +%s)
           ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SERVER_IP" \
             "cd ${DEPLOY_PATH} && tar xJf ${ARCHIVE} && rm -f ${ARCHIVE} && ls -lh ${DEPLOY_PATH}"
+          END_EXTRACT=$(date +%s)
+          echo "Extract time: $((END_EXTRACT - START_EXTRACT)) seconds"
 
       - name: Start application on cloud server
         shell: bash
