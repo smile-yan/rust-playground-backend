@@ -47,12 +47,13 @@ jobs:
           cp "target/x86_64-unknown-linux-musl/release/rust-playground" "dist/${BINARY}"
           cd dist
           sha256sum "${BINARY}" > "${BINARY}.sha256"
+          tar czf "${BINARY}.tar.gz" "${BINARY}" "${BINARY}.sha256"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: rust-playground-linux-x64
-          path: dist/*
+          path: dist/*.tar.gz
           if-no-files-found: error
 
   build-cross:
@@ -129,19 +130,27 @@ jobs:
           mkdir -p dist
           if [[ "${{ matrix.target }}" == *"windows"* ]]; then
             BINARY="rust-playground-${{ matrix.arch }}.exe"
+            ARCHIVE="rust-playground-${{ matrix.arch }}.zip"
             cp "target/${{ matrix.target }}/release/rust-playground.exe" "dist/${BINARY}"
+            cd dist
+            sha256sum "${BINARY}" > "${BINARY}.sha256"
+            zip "${ARCHIVE}" "${BINARY}" "${BINARY}.sha256"
           else
             BINARY="rust-playground-${{ matrix.arch }}"
+            ARCHIVE="rust-playground-${{ matrix.arch }}.tar.gz"
             cp "target/${{ matrix.target }}/release/rust-playground" "dist/${BINARY}"
+            cd dist
+            sha256sum "${BINARY}" > "${BINARY}.sha256"
+            tar czf "${ARCHIVE}" "${BINARY}" "${BINARY}.sha256"
           fi
-          cd dist
-          sha256sum "${BINARY}" > "${BINARY}.sha256"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: rust-playground-${{ matrix.arch }}
-          path: dist/*
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
           if-no-files-found: error
 
   deploy:
@@ -272,6 +281,7 @@ jobs:
         run: |
           set -euo pipefail
           COMMON_SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=60 -o ServerAliveCountMax=3 -o LogLevel=ERROR"
+          ARCHIVE="rust-playground-linux-x64.tar.gz"
 
           echo "=== Ensuring deploy directory exists on $SERVER_IP ==="
           ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SERVER_IP" \
@@ -284,10 +294,12 @@ jobs:
                 }
             }
 
-          echo "=== Uploading and extracting binary via tar over SSH to $SERVER_IP ==="
-          tar czf - -C dist rust-playground-linux-x64 rust-playground-linux-x64.sha256 | \
-            ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SERVER_IP" \
-              "tar xzf - -C ${DEPLOY_PATH} && ls -lh ${DEPLOY_PATH}"
+          echo "=== Uploading compressed archive to $SERVER_IP ==="
+          scp ${COMMON_SSH_OPTS} -P "$SSH_PORT" -i ~/.ssh/deploy_key "dist/${ARCHIVE}" "$SSH_USER@$SERVER_IP:${DEPLOY_PATH}/"
+
+          echo "=== Extracting archive and cleaning up on $SERVER_IP ==="
+          ssh ${COMMON_SSH_OPTS} -p "$SSH_PORT" -i ~/.ssh/deploy_key "$SSH_USER@$SERVER_IP" \
+            "cd ${DEPLOY_PATH} && tar xzf ${ARCHIVE} && rm -f ${ARCHIVE} && ls -lh ${DEPLOY_PATH}"
 
       - name: Start application on cloud server
         shell: bash
