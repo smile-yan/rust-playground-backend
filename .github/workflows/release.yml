@@ -131,28 +131,63 @@ jobs:
             dist/*.zip
           if-no-files-found: error
 
-  deploy:
-    name: Deploy to Cloud Server
-    needs: build-linux-x64
+  prepare:
+    name: Prepare deploy matrix
     runs-on: ubuntu-latest
-    env:
-      SSH_HOST: ${{ secrets.SSH_HOST }}
-      SSH_USER: ${{ secrets.SSH_USER }}
-      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-      SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
-      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/rust-playground' }}
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - name: Validate SSH secrets
+      - name: Validate DEPLOY_SERVERS secret
+        shell: bash
+        run: |
+          if [[ -z '${{ secrets.DEPLOY_SERVERS }}' ]]; then
+            echo "::error::Missing required secret: DEPLOY_SERVERS. Please create it with a JSON matrix."
+            exit 1
+          fi
+
+      - name: Parse deploy matrix
+        id: set-matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat <<'EOF' > servers.json
+          ${{ secrets.DEPLOY_SERVERS }}
+          EOF
+          echo "=== Server matrix ==="
+          jq . servers.json
+          if ! jq -e '.include | length > 0' servers.json >/dev/null 2>&1; then
+            echo "::error::DEPLOY_SERVERS must be a JSON object with a non-empty 'include' array. Example: {\"include\":[{\"host\":\"1.2.3.4\",\"user\":\"deploy\",\"private_key\":\"...\"}]}"
+            exit 1
+          fi
+          echo "matrix=$(jq -c . servers.json)" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: Deploy to ${{ matrix.host }}
+    needs: [build-linux-x64, prepare]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    env:
+      SSH_HOST: ${{ matrix.host }}
+      SSH_PORT: ${{ matrix.port || '22' }}
+      SSH_USER: ${{ matrix.user }}
+      SSH_PRIVATE_KEY: ${{ matrix.private_key }}
+      DEPLOY_PATH: ${{ matrix.path || '/opt/rust-playground' }}
+    steps:
+      - name: Validate server config
         shell: bash
         run: |
           missing=()
-          [[ -z "$SSH_HOST" ]] && missing+=("SSH_HOST")
-          [[ -z "$SSH_USER" ]] && missing+=("SSH_USER")
-          [[ -z "$SSH_PRIVATE_KEY" ]] && missing+=("SSH_PRIVATE_KEY")
+          [[ -z "$SSH_HOST" ]] && missing+=("host")
+          [[ -z "$SSH_USER" ]] && missing+=("user")
+          [[ -z "$SSH_PRIVATE_KEY" ]] && missing+=("private_key")
           if [[ ${#missing[@]} -gt 0 ]]; then
-            echo "::error::Missing required secrets: ${missing[*]}"
+            echo "::error::Missing required fields for server ${{ matrix.host }}: ${missing[*]}"
             exit 1
           fi
+          echo "SSH_PORT=${SSH_PORT:-22}" >> "$GITHUB_ENV"
+          echo "DEPLOY_PATH=${DEPLOY_PATH:-/opt/rust-playground}" >> "$GITHUB_ENV"
 
       - name: Download linux-x64 artifact
         uses: actions/download-artifact@v8
@@ -166,7 +201,9 @@ jobs:
           set -euo pipefail
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          cat <<'KEYEOF' > ~/.ssh/deploy_key
+          ${{ matrix.private_key }}
+          KEYEOF
           chmod 600 ~/.ssh/deploy_key
 
           echo "=== SSH config ==="
@@ -207,7 +244,7 @@ jobs:
             fi
           done
 
-          echo "::error::SSH connection test failed after $max_attempts attempts. Please verify SSH_HOST, SSH_PORT, SSH_USER, and SSH_PRIVATE_KEY, and ensure the server is reachable from GitHub Actions runners."
+          echo "::error::SSH connection test failed after $max_attempts attempts for ${{ matrix.host }}. Please verify host, port, user, and private_key in the DEPLOY_SERVERS secret, and ensure the server is reachable from GitHub Actions runners."
 
           echo "=== Diagnosing port service ==="
           echo "TCP port is open, but SSH banner was not received. The configured port may not be an SSH service."
@@ -226,9 +263,6 @@ jobs:
           ssh-keygen -f ~/.ssh/known_hosts -R "[$SSH_HOST]:$SSH_PORT" 2>/dev/null || true
           rm -f ~/.ssh/known_hosts2
         continue-on-error: true
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
 
       - name: Resolve server IP
         id: resolve
@@ -249,8 +283,6 @@ jobs:
           fi
           echo "Resolved $SSH_HOST -> $IP"
           echo "SERVER_IP=$IP" >> "$GITHUB_OUTPUT"
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
 
       - name: Copy binary to cloud server
         shell: bash

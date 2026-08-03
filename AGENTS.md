@@ -177,7 +177,7 @@ git push origin v0.0.1
    - `x86_64-apple-darwin`（macOS Intel）
    - `aarch64-apple-darwin`（macOS Apple Silicon）
    - `x86_64-pc-windows-msvc`（Windows x64）
-3. **deploy**：将 `linux-x64` 二进制通过 SSH 上传到服务器部署目录，校验 sha256，确保 Rust 工具链与 `wasm32-wasip1` 目标存在，启动服务，并通过 `GET /ping` 健康检查。
+3. **deploy**：`prepare` job 读取 `DEPLOY_SERVERS` Secret 中的 JSON 矩阵，生成动态部署矩阵；`deploy` job 并行将 `linux-x64` 二进制通过 SSH 上传到 JSON 中配置的每台云服务器部署目录，校验 sha256，确保 Rust 工具链与 `wasm32-wasip1` 目标存在，启动服务，并通过 `GET /ping` 健康检查。
 4. **release**：创建 GitHub Release，上传所有预编译二进制与校验文件。
 
 ### 部署所需 Secrets
@@ -186,11 +186,42 @@ git push origin v0.0.1
 
 | Secret | 说明 | 默认值 |
 |--------|------|--------|
-| `SSH_HOST` | 服务器域名或 IP | 必填 |
-| `SSH_PORT` | SSH 端口 | `22` |
-| `SSH_USER` | 登录用户名 | 必填 |
-| `SSH_PRIVATE_KEY` | SSH 私钥 | 必填 |
-| `DEPLOY_PATH` | 部署目录 | `/opt/rust-playground` |
+| `DEPLOY_SERVERS` | 服务器部署矩阵的 JSON 字符串，见下方格式 | 必填 |
+
+JSON 格式示例：
+
+```json
+{
+  "include": [
+    {
+      "host": "1.2.3.4",
+      "port": "22",
+      "user": "deploy",
+      "private_key": "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----",
+      "path": "/opt/rust-playground"
+    },
+    {
+      "host": "5.6.7.8",
+      "port": "22",
+      "user": "deploy",
+      "private_key": "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----",
+      "path": "/opt/rust-playground"
+    }
+  ]
+}
+```
+
+字段说明：
+
+| 字段 | 说明 | 默认值 |
+|------|------|--------|
+| `host` | 服务器域名或 IP | 必填 |
+| `user` | 登录用户名 | 必填 |
+| `private_key` | SSH 私钥全文，换行用 `\n` 表示 | 必填 |
+| `port` | SSH 端口 | `22` |
+| `path` | 部署目录 | `/opt/rust-playground` |
+
+如需部署到更多或更少服务器，直接修改 `DEPLOY_SERVERS` 的 `include` 数组即可，无需改动 workflow 文件。
 
 ### 服务器部署后可选：systemd 托管
 

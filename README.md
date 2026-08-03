@@ -86,6 +86,45 @@ curl -X POST http://127.0.0.1:9001/evaluate.json \
   -d '{"code":"fn main() { let sum: i32 = (1..=100).sum(); println!(\"{}\", sum); }"}'
 ```
 
+## 自动部署
+
+项目使用 GitHub Actions 自动构建并部署到多台云服务器。推送以 `v` 开头的 tag 时触发：
+
+```bash
+git tag -a v0.1.9 -m "release v0.1.9"
+git push origin v0.1.9
+```
+
+### 配置服务器
+
+在仓库 `Settings → Secrets and variables → Actions` 中创建 Secret `DEPLOY_SERVERS`，值为 JSON 格式的服务器矩阵：
+
+```json
+{
+  "include": [
+    {
+      "host": "1.2.3.4",
+      "port": "22",
+      "user": "deploy",
+      "private_key": "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----",
+      "path": "/opt/rust-playground"
+    }
+  ]
+}
+```
+
+字段说明：
+
+| 字段 | 说明 | 默认值 |
+|------|------|--------|
+| `host` | 服务器域名或 IP | 必填 |
+| `user` | 登录用户名 | 必填 |
+| `private_key` | SSH 私钥全文，换行用 `\n` 表示 | 必填 |
+| `port` | SSH 端口 | `22` |
+| `path` | 远程部署目录 | `/opt/rust-playground` |
+
+在 `include` 数组中添加更多对象即可部署到多台服务器。
+
 ## 安全限制
 
 - 内存上限：256 MB
