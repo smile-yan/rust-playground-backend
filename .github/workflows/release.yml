@@ -137,22 +137,19 @@ jobs:
   prepare:
     name: Prepare deploy matrix
     runs-on: ubuntu-latest
-    outputs:
-      indices: ${{ steps.set-matrix.outputs.indices }}
     steps:
-      - name: Validate DEPLOY_SERVERS secret
+      - name: Validate deployment secrets
         shell: bash
         run: |
+          set -euo pipefail
           if [[ -z '${{ secrets.DEPLOY_SERVERS }}' ]]; then
             echo "::error::Missing required secret: DEPLOY_SERVERS. Please create it with a JSON matrix."
             exit 1
           fi
-
-      - name: Parse deploy matrix
-        id: set-matrix
-        shell: bash
-        run: |
-          set -euo pipefail
+          if [[ -z '${{ secrets.GLOBAL_PRIVATE_KEY }}' ]]; then
+            echo "::error::Missing required secret: GLOBAL_PRIVATE_KEY. Please create it with the shared SSH private key used for all deployments."
+            exit 1
+          fi
           cat <<'EOF' > servers.json
           ${{ secrets.DEPLOY_SERVERS }}
           EOF
@@ -163,37 +160,29 @@ jobs:
             echo "::error::DEPLOY_SERVERS must be a JSON object with a non-empty 'include' array. Example: {\"include\":[{\"host\":\"1.2.3.4\",\"user\":\"deploy\"}]}"
             exit 1
           fi
-          indices=$(jq -c "[range($count)]" servers.json)
-          echo "indices=$indices" >> "$GITHUB_OUTPUT"
 
   deploy:
-    name: Deploy to server ${{ matrix.index }}
+    name: Deploy to ${{ matrix.server.host }}
     needs: [build-linux-x64, prepare]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        index: ${{ fromJson(needs.prepare.outputs.indices) }}
+        server: ${{ fromJson(secrets.DEPLOY_SERVERS).include }}
     steps:
       - name: Extract server config
         id: config
         shell: bash
         run: |
           set -euo pipefail
-          cat <<'EOF' > servers.json
-          ${{ secrets.DEPLOY_SERVERS }}
-          EOF
-          idx=${{ matrix.index }}
-          host=$(jq -r ".include[$idx].host" servers.json)
-          port=$(jq -r ".include[$idx].port // \"22\"" servers.json)
-          user=$(jq -r ".include[$idx].user" servers.json)
-          path=$(jq -r ".include[$idx].path // \"/opt/rust-playground\"" servers.json)
+          host='${{ matrix.server.host }}'
+          port='${{ matrix.server.port }}'
+          user='${{ matrix.server.user }}'
+          path='${{ matrix.server.path }}'
+          : "${port:=22}"
+          : "${path:=/opt/rust-playground}"
           if [[ -z "$host" || -z "$user" ]]; then
-            echo "::error::Missing required fields in DEPLOY_SERVERS include[$idx] (host, user are required)"
-            exit 1
-          fi
-          if [[ -z '${{ secrets.GLOBAL_PRIVATE_KEY }}' ]]; then
-            echo "::error::Missing required secret: GLOBAL_PRIVATE_KEY. Please create it with the shared SSH private key used for all deployments."
+            echo "::error::Missing required fields in DEPLOY_SERVERS matrix (host, user are required)"
             exit 1
           fi
           echo "SSH_HOST=$host" >> "$GITHUB_ENV"
