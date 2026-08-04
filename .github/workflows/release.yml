@@ -283,12 +283,17 @@ jobs:
         run: |
           set -euo pipefail
           echo "Resolving $SSH_HOST ..."
-          IP=$(dig +short "$SSH_HOST" 2>/dev/null | grep -E '^[0-9]+\.' | head -n1)
-          if [[ -z "$IP" ]]; then
-            IP=$(getent ahostsv4 "$SSH_HOST" 2>/dev/null | awk 'NR==1 {print $1}')
-          fi
-          if [[ -z "$IP" ]]; then
-            IP=$(getent hosts "$SSH_HOST" 2>/dev/null | awk 'NR==1 {print $1}')
+          # 如果 host 已经是 IP 地址，直接复用
+          if [[ "$SSH_HOST" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            IP="$SSH_HOST"
+          else
+            IP=$(dig +short "$SSH_HOST" 2>/dev/null | grep -E '^[0-9]+\.' | head -n1)
+            if [[ -z "$IP" ]]; then
+              IP=$(getent ahostsv4 "$SSH_HOST" 2>/dev/null | awk 'NR==1 {print $1}')
+            fi
+            if [[ -z "$IP" ]]; then
+              IP=$(getent hosts "$SSH_HOST" 2>/dev/null | awk 'NR==1 {print $1}')
+            fi
           fi
           if [[ -z "$IP" ]]; then
             echo "::error::Could not resolve $SSH_HOST to an IP address"
