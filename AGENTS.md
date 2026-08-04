@@ -187,6 +187,7 @@ git push origin v0.0.1
 | Secret | 说明 | 默认值 |
 |--------|------|--------|
 | `DEPLOY_SERVERS` | 服务器部署矩阵的 JSON 字符串，见下方格式 | 必填 |
+| `GLOBAL_PRIVITE_KEY` | 所有服务器共用的 SSH 私钥全文，换行用 `\n` 表示 | 必填 |
 
 JSON 格式示例：
 
@@ -197,14 +198,12 @@ JSON 格式示例：
       "host": "1.2.3.4",
       "port": "22",
       "user": "deploy",
-      "private_key": "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----",
       "path": "/opt/rust-playground"
     },
     {
       "host": "5.6.7.8",
       "port": "22",
       "user": "deploy",
-      "private_key": "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----",
       "path": "/opt/rust-playground"
     }
   ]
@@ -217,7 +216,6 @@ JSON 格式示例：
 |------|------|--------|
 | `host` | 服务器域名或 IP | 必填 |
 | `user` | 登录用户名 | 必填 |
-| `private_key` | SSH 私钥全文，换行用 `\n` 表示 | 必填 |
 | `port` | SSH 端口 | `22` |
 | `path` | 部署目录 | `/opt/rust-playground` |
 

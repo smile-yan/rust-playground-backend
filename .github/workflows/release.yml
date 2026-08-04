@@ -160,7 +160,7 @@ jobs:
           jq . servers.json
           count=$(jq '.include | length' servers.json)
           if [[ "$count" -le 0 ]]; then
-            echo "::error::DEPLOY_SERVERS must be a JSON object with a non-empty 'include' array. Example: {\"include\":[{\"host\":\"1.2.3.4\",\"user\":\"deploy\",\"private_key\":\"...\"}]}"
+            echo "::error::DEPLOY_SERVERS must be a JSON object with a non-empty 'include' array. Example: {\"include\":[{\"host\":\"1.2.3.4\",\"user\":\"deploy\"}]}"
             exit 1
           fi
           indices=$(jq -c "[range($count)]" servers.json)
@@ -188,9 +188,12 @@ jobs:
           port=$(jq -r ".include[$idx].port // \"22\"" servers.json)
           user=$(jq -r ".include[$idx].user" servers.json)
           path=$(jq -r ".include[$idx].path // \"/opt/rust-playground\"" servers.json)
-          private_key=$(jq -r ".include[$idx].private_key" servers.json)
-          if [[ -z "$host" || -z "$user" || -z "$private_key" ]]; then
-            echo "::error::Missing required fields in DEPLOY_SERVERS include[$idx] (host, user, private_key are required)"
+          if [[ -z "$host" || -z "$user" ]]; then
+            echo "::error::Missing required fields in DEPLOY_SERVERS include[$idx] (host, user are required)"
+            exit 1
+          fi
+          if [[ -z '${{ secrets.GLOBAL_PRIVITE_KEY }}' ]]; then
+            echo "::error::Missing required secret: GLOBAL_PRIVITE_KEY. Please create it with the shared SSH private key used for all deployments."
             exit 1
           fi
           echo "SSH_HOST=$host" >> "$GITHUB_ENV"
@@ -199,7 +202,9 @@ jobs:
           echo "DEPLOY_PATH=$path" >> "$GITHUB_ENV"
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          printf '%s\n' "$private_key" > ~/.ssh/deploy_key
+          cat <<'EOF' > ~/.ssh/deploy_key
+          ${{ secrets.GLOBAL_PRIVITE_KEY }}
+          EOF
           chmod 600 ~/.ssh/deploy_key
 
       - name: Download linux-x64 artifact
@@ -252,7 +257,7 @@ jobs:
             fi
           done
 
-          echo "::error::SSH connection test failed after $max_attempts attempts for $SSH_HOST. Please verify host, port, user, and private_key in the DEPLOY_SERVERS secret, and ensure the server is reachable from GitHub Actions runners."
+          echo "::error::SSH connection test failed after $max_attempts attempts for $SSH_HOST. Please verify host, port, user in the DEPLOY_SERVERS secret, ensure the GLOBAL_PRIVITE_KEY secret contains the correct shared SSH private key, and ensure the server is reachable from GitHub Actions runners."
 
           echo "=== Diagnosing port service ==="
           echo "TCP port is open, but SSH banner was not received. The configured port may not be an SSH service."

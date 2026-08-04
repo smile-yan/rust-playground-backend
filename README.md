@@ -98,7 +98,14 @@ git push origin v0.1.9
 
 ### 配置服务器
 
-在仓库 `Settings → Secrets and variables → Actions` 中创建 Secret `DEPLOY_SERVERS`，值为 JSON 格式的服务器矩阵：
+在仓库 `Settings → Secrets and variables → Actions` 中配置以下 Secrets：
+
+| Secret | 说明 |
+|--------|------|
+| `DEPLOY_SERVERS` | JSON 格式的服务器矩阵 |
+| `GLOBAL_PRIVITE_KEY` | 所有服务器共用的 SSH 私钥全文 |
+
+`DEPLOY_SERVERS` 格式示例：
 
 ```json
 {
@@ -107,7 +114,6 @@ git push origin v0.1.9
       "host": "1.2.3.4",
       "port": "22",
       "user": "deploy",
-      "private_key": "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----",
       "path": "/opt/rust-playground"
     }
   ]
@@ -120,7 +126,6 @@ git push origin v0.1.9
 |------|------|--------|
 | `host` | 服务器域名或 IP | 必填 |
 | `user` | 登录用户名 | 必填 |
-| `private_key` | SSH 私钥全文，换行用 `\n` 表示 | 必填 |
 | `port` | SSH 端口 | `22` |
 | `path` | 远程部署目录 | `/opt/rust-playground` |
 

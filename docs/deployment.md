@@ -96,16 +96,43 @@ sudo iptables -I INPUT -p tcp --dport 9001 -j ACCEPT
 
 | Secret | 说明 | 示例 |
 | --- | --- | --- |
-| `SSH_HOST` | 服务器域名或 IP | `1.2.3.4` 或 `example.com` |
-| `SSH_PORT` | SSH 端口，可选，默认 22 | `22` |
-| `SSH_USER` | 登录用户名 | `root` |
-| `SSH_PRIVATE_KEY` | SSH 私钥 | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
-| `DEPLOY_PATH` | 部署目录，可选，默认 `/opt/rust-playground` | `/opt/rust-playground` |
+| `DEPLOY_SERVERS` | 服务器部署矩阵的 JSON 字符串 | 见下方格式 |
+| `GLOBAL_PRIVITE_KEY` | 所有服务器共用的 SSH 私钥 | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
+
+`DEPLOY_SERVERS` JSON 格式示例：
+
+```json
+{
+  "include": [
+    {
+      "host": "1.2.3.4",
+      "port": "22",
+      "user": "deploy",
+      "path": "/opt/rust-playground"
+    },
+    {
+      "host": "5.6.7.8",
+      "port": "22",
+      "user": "deploy",
+      "path": "/opt/rust-playground"
+    }
+  ]
+}
+```
+
+字段说明：
+
+| 字段 | 说明 | 默认值 |
+| --- | --- | --- |
+| `host` | 服务器域名或 IP | 必填 |
+| `user` | 登录用户名 | 必填 |
+| `port` | SSH 端口 | `22` |
+| `path` | 部署目录 | `/opt/rust-playground` |
 
 注意：
 
-- 私钥对应的公钥需要添加到服务器的 `~/.ssh/authorized_keys`。
-- 如果 `SSH_HOST` 是域名且解析到多个 IP，流水线会自动解析并固定使用其中一个 IP。
+- `GLOBAL_PRIVITE_KEY` 对应的公钥需要添加到所有服务器的 `~/.ssh/authorized_keys`。
+- 如果 `host` 是域名且解析到多个 IP，流水线会自动解析并固定使用其中一个 IP。
 
 ## 7. GitHub Actions 部署流程
 
