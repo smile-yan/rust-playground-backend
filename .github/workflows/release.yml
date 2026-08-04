@@ -138,7 +138,7 @@ jobs:
     name: Prepare deploy matrix
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      indices: ${{ steps.set-matrix.outputs.indices }}
     steps:
       - name: Validate DEPLOY_SERVERS secret
         shell: bash
@@ -158,39 +158,49 @@ jobs:
           EOF
           echo "=== Server matrix ==="
           jq . servers.json
-          if ! jq -e '.include | length > 0' servers.json >/dev/null 2>&1; then
+          count=$(jq '.include | length' servers.json)
+          if [[ "$count" -le 0 ]]; then
             echo "::error::DEPLOY_SERVERS must be a JSON object with a non-empty 'include' array. Example: {\"include\":[{\"host\":\"1.2.3.4\",\"user\":\"deploy\",\"private_key\":\"...\"}]}"
             exit 1
           fi
-          echo "matrix=$(jq -c . servers.json)" >> "$GITHUB_OUTPUT"
+          indices=$(jq -c "[range($count)]" servers.json)
+          echo "indices=$indices" >> "$GITHUB_OUTPUT"
 
   deploy:
-    name: Deploy to ${{ matrix.host }}
+    name: Deploy to server ${{ matrix.index }}
     needs: [build-linux-x64, prepare]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
-    env:
-      SSH_HOST: ${{ matrix.host }}
-      SSH_PORT: ${{ matrix.port || '22' }}
-      SSH_USER: ${{ matrix.user }}
-      SSH_PRIVATE_KEY: ${{ matrix.private_key }}
-      DEPLOY_PATH: ${{ matrix.path || '/opt/rust-playground' }}
+      matrix:
+        index: ${{ fromJson(needs.prepare.outputs.indices) }}
     steps:
-      - name: Validate server config
+      - name: Extract server config
+        id: config
         shell: bash
         run: |
-          missing=()
-          [[ -z "$SSH_HOST" ]] && missing+=("host")
-          [[ -z "$SSH_USER" ]] && missing+=("user")
-          [[ -z "$SSH_PRIVATE_KEY" ]] && missing+=("private_key")
-          if [[ ${#missing[@]} -gt 0 ]]; then
-            echo "::error::Missing required fields for server ${{ matrix.host }}: ${missing[*]}"
+          set -euo pipefail
+          cat <<'EOF' > servers.json
+          ${{ secrets.DEPLOY_SERVERS }}
+          EOF
+          idx=${{ matrix.index }}
+          host=$(jq -r ".include[$idx].host" servers.json)
+          port=$(jq -r ".include[$idx].port // \"22\"" servers.json)
+          user=$(jq -r ".include[$idx].user" servers.json)
+          path=$(jq -r ".include[$idx].path // \"/opt/rust-playground\"" servers.json)
+          private_key=$(jq -r ".include[$idx].private_key" servers.json)
+          if [[ -z "$host" || -z "$user" || -z "$private_key" ]]; then
+            echo "::error::Missing required fields in DEPLOY_SERVERS include[$idx] (host, user, private_key are required)"
             exit 1
           fi
-          echo "SSH_PORT=${SSH_PORT:-22}" >> "$GITHUB_ENV"
-          echo "DEPLOY_PATH=${DEPLOY_PATH:-/opt/rust-playground}" >> "$GITHUB_ENV"
+          echo "SSH_HOST=$host" >> "$GITHUB_ENV"
+          echo "SSH_PORT=$port" >> "$GITHUB_ENV"
+          echo "SSH_USER=$user" >> "$GITHUB_ENV"
+          echo "DEPLOY_PATH=$path" >> "$GITHUB_ENV"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$private_key" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
 
       - name: Download linux-x64 artifact
         uses: actions/download-artifact@v8
@@ -202,12 +212,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          cat <<'KEYEOF' > ~/.ssh/deploy_key
-          ${{ matrix.private_key }}
-          KEYEOF
-          chmod 600 ~/.ssh/deploy_key
+          # SSH config and deploy_key are prepared in the previous step
 
           echo "=== SSH config ==="
           echo "Host: $SSH_HOST"
@@ -247,7 +252,7 @@ jobs:
             fi
           done
 
-          echo "::error::SSH connection test failed after $max_attempts attempts for ${{ matrix.host }}. Please verify host, port, user, and private_key in the DEPLOY_SERVERS secret, and ensure the server is reachable from GitHub Actions runners."
+          echo "::error::SSH connection test failed after $max_attempts attempts for $SSH_HOST. Please verify host, port, user, and private_key in the DEPLOY_SERVERS secret, and ensure the server is reachable from GitHub Actions runners."
 
           echo "=== Diagnosing port service ==="
           echo "TCP port is open, but SSH banner was not received. The configured port may not be an SSH service."
