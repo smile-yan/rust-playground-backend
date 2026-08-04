@@ -97,7 +97,7 @@ sudo iptables -I INPUT -p tcp --dport 9001 -j ACCEPT
 | Secret | 说明 | 示例 |
 | --- | --- | --- |
 | `DEPLOY_SERVERS` | 服务器部署矩阵的 JSON 字符串 | 见下方格式 |
-| `GLOBAL_PRIVITE_KEY` | 所有服务器共用的 SSH 私钥 | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
+| `GLOBAL_PRIVATE_KEY` | 所有服务器共用的 SSH 私钥 | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
 
 `DEPLOY_SERVERS` JSON 格式示例：
 
@@ -131,7 +131,7 @@ sudo iptables -I INPUT -p tcp --dport 9001 -j ACCEPT
 
 注意：
 
-- `GLOBAL_PRIVITE_KEY` 对应的公钥需要添加到所有服务器的 `~/.ssh/authorized_keys`。
+- `GLOBAL_PRIVATE_KEY` 对应的公钥需要添加到所有服务器的 `~/.ssh/authorized_keys`。
 - 如果 `host` 是域名且解析到多个 IP，流水线会自动解析并固定使用其中一个 IP。
 
 ## 7. GitHub Actions 部署流程

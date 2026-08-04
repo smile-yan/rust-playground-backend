@@ -192,8 +192,8 @@ jobs:
             echo "::error::Missing required fields in DEPLOY_SERVERS include[$idx] (host, user are required)"
             exit 1
           fi
-          if [[ -z '${{ secrets.GLOBAL_PRIVITE_KEY }}' ]]; then
-            echo "::error::Missing required secret: GLOBAL_PRIVITE_KEY. Please create it with the shared SSH private key used for all deployments."
+          if [[ -z '${{ secrets.GLOBAL_PRIVATE_KEY }}' ]]; then
+            echo "::error::Missing required secret: GLOBAL_PRIVATE_KEY. Please create it with the shared SSH private key used for all deployments."
             exit 1
           fi
           echo "SSH_HOST=$host" >> "$GITHUB_ENV"
@@ -203,7 +203,7 @@ jobs:
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           cat <<'EOF' > ~/.ssh/deploy_key
-          ${{ secrets.GLOBAL_PRIVITE_KEY }}
+          ${{ secrets.GLOBAL_PRIVATE_KEY }}
           EOF
           chmod 600 ~/.ssh/deploy_key
 
@@ -257,7 +257,7 @@ jobs:
             fi
           done
 
-          echo "::error::SSH connection test failed after $max_attempts attempts for $SSH_HOST. Please verify host, port, user in the DEPLOY_SERVERS secret, ensure the GLOBAL_PRIVITE_KEY secret contains the correct shared SSH private key, and ensure the server is reachable from GitHub Actions runners."
+          echo "::error::SSH connection test failed after $max_attempts attempts for $SSH_HOST. Please verify host, port, user in the DEPLOY_SERVERS secret, ensure the GLOBAL_PRIVATE_KEY secret contains the correct shared SSH private key, and ensure the server is reachable from GitHub Actions runners."
 
           echo "=== Diagnosing port service ==="
           echo "TCP port is open, but SSH banner was not received. The configured port may not be an SSH service."

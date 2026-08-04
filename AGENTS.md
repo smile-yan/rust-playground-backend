@@ -187,7 +187,7 @@ git push origin v0.0.1
 | Secret | 说明 | 默认值 |
 |--------|------|--------|
 | `DEPLOY_SERVERS` | 服务器部署矩阵的 JSON 字符串，见下方格式 | 必填 |
-| `GLOBAL_PRIVITE_KEY` | 所有服务器共用的 SSH 私钥全文，换行用 `\n` 表示 | 必填 |
+| `GLOBAL_PRIVATE_KEY` | 所有服务器共用的 SSH 私钥全文，换行用 `\n` 表示 | 必填 |
 
 JSON 格式示例：
 

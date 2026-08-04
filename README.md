@@ -103,7 +103,7 @@ git push origin v0.1.9
 | Secret | 说明 |
 |--------|------|
 | `DEPLOY_SERVERS` | JSON 格式的服务器矩阵 |
-| `GLOBAL_PRIVITE_KEY` | 所有服务器共用的 SSH 私钥全文 |
+| `GLOBAL_PRIVATE_KEY` | 所有服务器共用的 SSH 私钥全文 |
 
 `DEPLOY_SERVERS` 格式示例：
 
