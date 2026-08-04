@@ -191,9 +191,7 @@ jobs:
           echo "DEPLOY_PATH=$path" >> "$GITHUB_ENV"
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          cat <<'EOF' > ~/.ssh/deploy_key
-          ${{ secrets.GLOBAL_PRIVATE_KEY }}
-          EOF
+          printf '%s\n' '${{ secrets.GLOBAL_PRIVATE_KEY }}' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
       - name: Download linux-x64 artifact
