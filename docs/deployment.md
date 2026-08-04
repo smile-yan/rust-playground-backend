@@ -67,7 +67,7 @@ sudo mkdir -p /opt/rust-playground
 sudo chown $(id -u):$(id -g) /opt/rust-playground
 ```
 
-> 你也可以使用其他目录，例如 `~/rust-playground`，只需在 GitHub Secrets 中配置对应的 `DEPLOY_PATH`。
+> 你也可以使用其他目录，例如 `~/rust-playground`，只需在 `DEPLOY_SERVERS` 中配置对应的 `path`。
 
 ## 5. 开放防火墙端口
 
@@ -90,14 +90,14 @@ sudo iptables -I INPUT -p tcp --dport 9001 -j ACCEPT
 
 还需要在阿里云、腾讯云、AWS 等控制台的安全组/防火墙规则中放行 **9001/tcp**。
 
-## 6. 配置 GitHub Secrets
+## 6. 配置 GitHub Secrets 与 Variables
 
-在仓库 `Settings → Secrets and variables → Actions` 中添加以下 Secrets：
+在仓库 `Settings → Secrets and variables → Actions` 中添加以下项：
 
-| Secret | 说明 | 示例 |
-| --- | --- | --- |
-| `DEPLOY_SERVERS` | 服务器部署矩阵的 JSON 字符串 | 见下方格式 |
-| `GLOBAL_PRIVATE_KEY` | 所有服务器共用的 SSH 私钥 | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
+| 名称 | 类型 | 说明 | 示例 |
+| --- | --- | --- | --- |
+| `DEPLOY_SERVERS` | Repository Variable | 服务器部署矩阵的 JSON 字符串 | 见下方格式 |
+| `GLOBAL_PRIVATE_KEY` | Secret | 所有服务器共用的 SSH 私钥 | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
 
 `DEPLOY_SERVERS` JSON 格式示例：
 

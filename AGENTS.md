@@ -177,17 +177,17 @@ git push origin v0.0.1
    - `x86_64-apple-darwin`（macOS Intel）
    - `aarch64-apple-darwin`（macOS Apple Silicon）
    - `x86_64-pc-windows-msvc`（Windows x64）
-3. **deploy**：`prepare` job 读取 `DEPLOY_SERVERS` Secret 中的 JSON 矩阵，生成动态部署矩阵；`deploy` job 并行将 `linux-x64` 二进制通过 SSH 上传到 JSON 中配置的每台云服务器部署目录，校验 sha256，确保 Rust 工具链与 `wasm32-wasip1` 目标存在，启动服务，并通过 `GET /ping` 健康检查。
+3. **deploy**：`prepare` job 读取 `DEPLOY_SERVERS` Repository Variable 中的 JSON 矩阵；`deploy` job 并行将 `linux-x64` 二进制通过 SSH 上传到 JSON 中配置的每台云服务器部署目录，校验 sha256，确保 Rust 工具链与 `wasm32-wasip1` 目标存在，启动服务，并通过 `GET /ping` 健康检查。
 4. **release**：创建 GitHub Release，上传所有预编译二进制与校验文件。
 
-### 部署所需 Secrets
+### 部署所需 Secrets 与 Variables
 
 在仓库 `Settings → Secrets and variables → Actions` 中配置：
 
-| Secret | 说明 | 默认值 |
-|--------|------|--------|
-| `DEPLOY_SERVERS` | 服务器部署矩阵的 JSON 字符串，见下方格式 | 必填 |
-| `GLOBAL_PRIVATE_KEY` | 所有服务器共用的 SSH 私钥全文，换行用 `\n` 表示 | 必填 |
+| 名称 | 类型 | 说明 | 默认值 |
+|------|------|------|--------|
+| `DEPLOY_SERVERS` | Repository Variable | 服务器部署矩阵的 JSON 字符串，见下方格式 | 必填 |
+| `GLOBAL_PRIVATE_KEY` | Secret | 所有服务器共用的 SSH 私钥全文，换行用 `\n` 表示 | 必填 |
 
 JSON 格式示例：
 

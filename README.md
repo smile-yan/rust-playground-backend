@@ -98,12 +98,12 @@ git push origin v0.1.9
 
 ### 配置服务器
 
-在仓库 `Settings → Secrets and variables → Actions` 中配置以下 Secrets：
+在仓库 `Settings → Secrets and variables → Actions` 中配置以下项：
 
-| Secret | 说明 |
-|--------|------|
-| `DEPLOY_SERVERS` | JSON 格式的服务器矩阵 |
-| `GLOBAL_PRIVATE_KEY` | 所有服务器共用的 SSH 私钥全文 |
+| 名称 | 类型 | 说明 |
+|------|------|------|
+| `DEPLOY_SERVERS` | Repository Variable | JSON 格式的服务器矩阵 |
+| `GLOBAL_PRIVATE_KEY` | Secret | 所有服务器共用的 SSH 私钥全文 |
 
 `DEPLOY_SERVERS` 格式示例：
 

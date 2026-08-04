@@ -142,8 +142,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z '${{ secrets.DEPLOY_SERVERS }}' ]]; then
-            echo "::error::Missing required secret: DEPLOY_SERVERS. Please create it with a JSON matrix."
+          if [[ -z '${{ vars.DEPLOY_SERVERS }}' ]]; then
+            echo "::error::Missing required variable: DEPLOY_SERVERS. Please create it as a repository variable with a JSON matrix."
             exit 1
           fi
           if [[ -z '${{ secrets.GLOBAL_PRIVATE_KEY }}' ]]; then
@@ -151,7 +151,7 @@ jobs:
             exit 1
           fi
           cat <<'EOF' > servers.json
-          ${{ secrets.DEPLOY_SERVERS }}
+          ${{ vars.DEPLOY_SERVERS }}
           EOF
           echo "=== Server matrix ==="
           jq . servers.json
@@ -168,7 +168,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        server: ${{ fromJson(secrets.DEPLOY_SERVERS).include }}
+        server: ${{ fromJson(vars.DEPLOY_SERVERS).include }}
     steps:
       - name: Extract server config
         id: config
@@ -246,7 +246,7 @@ jobs:
             fi
           done
 
-          echo "::error::SSH connection test failed after $max_attempts attempts for $SSH_HOST. Please verify host, port, user in the DEPLOY_SERVERS secret, ensure the GLOBAL_PRIVATE_KEY secret contains the correct shared SSH private key, and ensure the server is reachable from GitHub Actions runners."
+          echo "::error::SSH connection test failed after $max_attempts attempts for $SSH_HOST. Please verify host, port, user in the DEPLOY_SERVERS variable, ensure the GLOBAL_PRIVATE_KEY secret contains the correct shared SSH private key, and ensure the server is reachable from GitHub Actions runners."
 
           echo "=== Diagnosing port service ==="
           echo "TCP port is open, but SSH banner was not received. The configured port may not be an SSH service."
